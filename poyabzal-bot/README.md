@@ -35,7 +35,7 @@ Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
 ## 1. Nima kerak bo'ladi
 
 - Kompyuter yoki server (Windows, macOS yoki Linux). Bot ishlashi uchun u **yoqilgan** turishi kerak.
-- **Python 3.10 yoki yangiroq.** Tekshirish uchun terminalda yozing:
+- **Python 3.12** (3.10–3.12 ishlaydi, eng ishonchlisi 3.12). Tekshirish uchun terminalda yozing:
   ```bash
   python --version
   ```
@@ -133,6 +133,24 @@ ANTHROPIC_API_KEY=sk-ant-...
 ---
 
 ## 6. O'rnatish
+
+### ⚡ Eng oson yo'l (Windows)
+
+1. Loyihani yuklab oling: GitHub sahifasida yashil **Code** tugmasi → **Download ZIP** → arxivni oching.
+2. `poyabzal-bot` papkasiga kiring.
+3. **`ishga_tushirish.bat`** faylini sichqoncha bilan **ikki marta bosing**.
+   - Birinchi safar kerakli dasturlar o'zi o'rnatiladi (5–10 daqiqa).
+   - Keyin Bloknot ochiladi — unga tokenlarni yozasiz (7-bo'lim), **Ctrl+S** bosib saqlaysiz va yopasiz.
+   - Bot ishga tushadi. Qora oyna ochiq turgan paytda bot ishlaydi, yopsangiz to'xtaydi.
+4. Keyingi safarlar: faqat `ishga_tushirish.bat` ni ikki marta bosasiz.
+
+macOS / Linux: terminalda `bash ishga_tushirish.sh`.
+
+> Windows "Noma'lum dastur" deb ogohlantirsa: **Batafsil** (More info) → **Baribir ishga tushirish** (Run anyway).
+
+Quyidagi qo'lda o'rnatish — agar oson yo'l ishlamasa.
+
+### Qo'lda o'rnatish
 
 Terminalni oching va quyidagilarni **ketma-ket** bajaring.
 
