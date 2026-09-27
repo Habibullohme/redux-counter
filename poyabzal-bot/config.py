@@ -20,7 +20,10 @@ class Settings:
     bot_token: str
     channel_id: int | str
     admin_id: int
-    anthropic_api_key: str
+    ai_provider: str          # "gemini" yoki "claude"
+    gemini_api_key: str       # bo'sh bo'lsa — shablon rejimi
+    gemini_model: str
+    anthropic_api_key: str    # bo'sh bo'lsa — shablon rejimi
     claude_model: str
     shop_name: str
     contact: str
@@ -34,11 +37,20 @@ def _fail(message: str) -> None:
     sys.exit(1)
 
 
+def _is_placeholder(value: str) -> bool:
+    return not value or "..." in value or "bu-yerga" in value
+
+
 def _required(name: str) -> str:
     value = os.getenv(name, "").strip()
-    if not value or "..." in value or "bu-yerga" in value:
+    if _is_placeholder(value):
         _fail(f"{name} .env faylida to'ldirilmagan.")
     return value
+
+
+def _optional_key(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    return "" if _is_placeholder(value) else value
 
 
 def _parse_channel_id(raw: str) -> int | str:
@@ -59,11 +71,18 @@ def load_settings() -> Settings:
     if not db_path.is_absolute():
         db_path = BASE_DIR / db_path
 
+    ai_provider = os.getenv("AI_PROVIDER", "gemini").strip().lower() or "gemini"
+    if ai_provider not in ("gemini", "claude"):
+        _fail("AI_PROVIDER faqat gemini yoki claude bo'lishi mumkin.")
+
     return Settings(
         bot_token=_required("BOT_TOKEN"),
         channel_id=_parse_channel_id(_required("CHANNEL_ID")),
         admin_id=int(admin_raw),
-        anthropic_api_key=_required("ANTHROPIC_API_KEY"),
+        ai_provider=ai_provider,
+        gemini_api_key=_optional_key("GEMINI_API_KEY"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip() or "gemini-flash-latest",
+        anthropic_api_key=_optional_key("ANTHROPIC_API_KEY"),
         claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip() or "claude-sonnet-5",
         shop_name=os.getenv("SHOP_NAME", "Poyabzal Optom").strip(),
         contact=os.getenv("CONTACT", "").strip(),

@@ -14,7 +14,7 @@ from aiogram.types import BotCommand, ErrorEvent
 from bot.handlers import common, products
 from bot.middlewares import AlbumMiddleware
 from config import load_settings
-from services.ai_service import AIService
+from services.ai_service import AIService, build_provider
 from services.database import Database
 from services.image_service import ImageService
 
@@ -41,7 +41,16 @@ async def main() -> None:
     shop_id = await db.get_or_create_shop(settings.admin_id, settings.shop_name, settings.channel_id)
 
     images = ImageService(settings.rembg_model)
-    ai = AIService(settings.anthropic_api_key, settings.claude_model)
+    provider = build_provider(
+        settings.ai_provider,
+        settings.gemini_api_key, settings.gemini_model,
+        settings.anthropic_api_key, settings.claude_model,
+    )
+    ai = AIService(provider)
+    if provider is None:
+        log.warning("AI kaliti yo'q (%s) — tavsiflar shablon bo'yicha yoziladi", settings.ai_provider)
+    else:
+        log.info("Tavsif yozuvchi AI: %s (%s)", provider.name, provider.model)
 
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(settings=settings, db=db, images=images, ai=ai, shop_id=shop_id)

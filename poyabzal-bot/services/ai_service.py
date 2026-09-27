@@ -1,6 +1,9 @@
-"""Claude API orqali kanal uchun tavsif yozish.
+"""AI (Gemini yoki Claude) orqali kanal uchun tavsif yozish.
 
-MUHIM: Claude ga kelish narxi va yuk manbai (Chorsu/Namangan) umuman
+AI tanlash .env dagi AI_PROVIDER orqali: gemini (bepul limit) yoki claude.
+Kalit bo'lmasa yoki AI ishlamasa, tavsif tayyor shablon bo'yicha yoziladi.
+
+MUHIM: AI ga kelish narxi va yuk manbai (Chorsu/Namangan) umuman
 yuborilmaydi. Qo'shimcha himoya sifatida tayyor matn tekshiriladi: agar unda
 kelish narxi uchrab qolsa, matn tashlab yuboriladi va shablon ishlatiladi.
 """
@@ -9,8 +12,6 @@ from __future__ import annotations
 import html
 import logging
 from dataclasses import dataclass
-
-import anthropic
 
 from models.product import ParsedCaption
 from services.caption_parser import _NUMBER, parse_money
@@ -80,10 +81,112 @@ def mentions_price(text: str, sale_price: int | None) -> bool:
     return any(parse_money(m.group(0)) == sale_price for m in _NUMBER.finditer(text))
 
 
-class AIService:
+class AIProviderError(Exception):
+    """AI xizmatidan foydalanib bo'lmadi. `note` — adminga ko'rsatiladigan qisqa sabab."""
+
+    def __init__(self, note: str) -> None:
+        super().__init__(note)
+        self.note = note
+
+
+class GeminiProvider:
+    """Google Gemini (bepul limiti bor). Kalit: https://aistudio.google.com/apikey"""
+
+    name = "Gemini"
+
     def __init__(self, api_key: str, model: str) -> None:
+        from google import genai
+        from google.genai import types
+
+        self._types = types
+        self.client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
+        self.model = model
+
+    async def write(self, system: str, prompt: str) -> str:
+        from google.genai import errors
+
+        types = self._types
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    temperature=0.8,
+                    max_output_tokens=4096,
+                ),
+            )
+        except errors.ClientError as exc:
+            log.error("Gemini xatosi %s: %s", exc.code, exc.message)
+            if exc.code == 429:
+                raise AIProviderError("Gemini bepul limiti tugadi (keyinroq qayta tiklanadi)") from exc
+            if exc.code == 404:
+                raise AIProviderError(f"Gemini modeli topilmadi: {self.model} (.env dagi GEMINI_MODEL ni tekshiring)") from exc
+            if exc.code in (400, 401, 403):
+                raise AIProviderError("Gemini kaliti noto'g'ri yoki bu mintaqada ruxsat yo'q") from exc
+            raise AIProviderError(f"Gemini xatosi ({exc.code})") from exc
+        except errors.APIError as exc:
+            log.error("Gemini server xatosi %s: %s", exc.code, exc.message)
+            raise AIProviderError(f"Gemini server xatosi ({exc.code})") from exc
+
+        candidate = response.candidates[0] if response.candidates else None
+        finish = getattr(getattr(candidate, "finish_reason", None), "name", "STOP")
+        if candidate is None or finish not in ("STOP", "FINISH_REASON_UNSPECIFIED"):
+            log.warning("Gemini javobi to'liq emas: %s", finish if candidate else response.prompt_feedback)
+            raise AIProviderError("AI javobi to'liq kelmadi")
+        return response.text or ""
+
+
+class ClaudeProvider:
+    """Anthropic Claude (pullik, console.anthropic.com)."""
+
+    name = "Claude"
+
+    def __init__(self, api_key: str, model: str) -> None:
+        import anthropic
+
+        self._anthropic = anthropic
         self.client = anthropic.AsyncAnthropic(api_key=api_key, timeout=90.0, max_retries=2)
         self.model = model
+
+    async def write(self, system: str, prompt: str) -> str:
+        anthropic = self._anthropic
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=4000,
+                system=system,
+                output_config={"effort": "low"},
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except anthropic.AuthenticationError as exc:
+            raise AIProviderError("Claude API kaliti noto'g'ri") from exc
+        except anthropic.RateLimitError as exc:
+            raise AIProviderError("Claude API band (limit)") from exc
+        except anthropic.APIStatusError as exc:
+            log.error("Claude API xatosi %s: %s", exc.status_code, exc.message)
+            raise AIProviderError(f"Claude API xatosi ({exc.status_code})") from exc
+        except anthropic.APIConnectionError as exc:
+            raise AIProviderError("Claude API ga ulanib bo'lmadi") from exc
+
+        if response.stop_reason in ("refusal", "max_tokens"):
+            log.warning("Claude javobi to'liq emas: %s", response.stop_reason)
+            raise AIProviderError("AI javobi to'liq kelmadi")
+        return "\n".join(b.text for b in response.content if b.type == "text")
+
+
+def build_provider(provider: str, gemini_key: str, gemini_model: str, claude_key: str, claude_model: str):
+    """.env dagi AI_PROVIDER bo'yicha AI tanlaydi. Kalit bo'lmasa — None (shablon rejimi)."""
+    if provider == "gemini" and gemini_key:
+        return GeminiProvider(gemini_key, gemini_model)
+    if provider == "claude" and claude_key:
+        return ClaudeProvider(claude_key, claude_model)
+    return None
+
+
+class AIService:
+    def __init__(self, provider: GeminiProvider | ClaudeProvider | None) -> None:
+        self.provider = provider
 
     def _build_user_prompt(self, parsed: ParsedCaption) -> str:
         # Faqat xaridorga ko'rsatsa bo'ladigan ma'lumotlar — kelish narxi va manba YO'Q
@@ -98,34 +201,18 @@ class AIService:
 
     async def generate_description(self, parsed: ParsedCaption) -> DescriptionResult:
         fallback = template_description(parsed)
+        if self.provider is None:
+            return DescriptionResult(fallback, False, "AI kaliti yo'q — tavsif shablon bo'yicha yozildi.")
+
         try:
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=4000,
-                system=SYSTEM_PROMPT,
-                output_config={"effort": "low"},
-                messages=[{"role": "user", "content": self._build_user_prompt(parsed)}],
-            )
-        except anthropic.AuthenticationError:
-            log.error("ANTHROPIC_API_KEY noto'g'ri")
-            return DescriptionResult(fallback, False, "Claude API kaliti noto'g'ri — shablon ishlatildi.")
-        except anthropic.RateLimitError:
-            log.warning("Claude API limitga yetdi")
-            return DescriptionResult(fallback, False, "Claude API band (limit) — shablon ishlatildi.")
-        except anthropic.APIStatusError as exc:
-            log.error("Claude API xatosi %s: %s", exc.status_code, exc.message)
-            return DescriptionResult(fallback, False, f"Claude API xatosi ({exc.status_code}) — shablon ishlatildi.")
-        except anthropic.APIConnectionError:
-            log.exception("Claude API ga ulanib bo'lmadi")
-            return DescriptionResult(fallback, False, "Claude API ga ulanib bo'lmadi — shablon ishlatildi.")
+            text = await self.provider.write(SYSTEM_PROMPT, self._build_user_prompt(parsed))
+        except AIProviderError as exc:
+            return DescriptionResult(fallback, False, f"{exc.note} — shablon ishlatildi.")
+        except Exception:  # noqa: BLE001 — tarmoq va boshqa kutilmagan xatolar: bot to'xtamasin
+            log.exception("%s ga murojaatda xato", self.provider.name)
+            return DescriptionResult(fallback, False, f"{self.provider.name} ga ulanib bo'lmadi — shablon ishlatildi.")
 
-        if response.stop_reason in ("refusal", "max_tokens"):
-            log.warning("Claude javobi to'liq emas: %s", response.stop_reason)
-            return DescriptionResult(fallback, False, "AI javobi to'liq kelmadi — shablon ishlatildi.")
-
-        text = "\n".join(b.text for b in response.content if b.type == "text").strip()
-        text = text.replace("**", "").replace("__", "")
-
+        text = text.strip().replace("**", "").replace("__", "")
         if not text:
             return DescriptionResult(fallback, False, "AI bo'sh javob qaytardi — shablon ishlatildi.")
         if leaks_cost(text, parsed.cost_price):

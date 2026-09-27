@@ -3,7 +3,8 @@
 Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
 
 1. Har bir rasm fonini olib tashlaydi va chiroyli **studiya foni** qo'yadi (och gradient, yumshoq soya, mahsulot markazda).
-2. **Claude AI** yordamida o'zbek tilida xaridorlar uchun qisqa tavsif yozadi.
+2. **AI** (Google Gemini — bepul limit bilan, yoki Claude) yordamida o'zbek tilida xaridorlar uchun qisqa tavsif yozadi.
+   AI kaliti bo'lmasa ham bot ishlaydi — tavsif tayyor shablon bo'yicha yoziladi.
 3. Sizga **ko'rinishini** yuboradi, ostida ikkita tugma: **✅ Tasdiqlash** va **❌ Bekor qilish**.
 4. Tasdiqlasangiz, kanalga **albom** qilib joylaydi.
 5. Hammasini (kelish narxi ham) bazaga saqlaydi.
@@ -20,7 +21,7 @@ Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
 2. [Bot yaratish (BOT_TOKEN)](#2-bot-yaratish-bot_token)
 3. [ADMIN_ID ni olish](#3-admin_id-ni-olish)
 4. [Kanal tayyorlash va CHANNEL_ID ni olish](#4-kanal-tayyorlash-va-channel_id-ni-olish)
-5. [Claude API kaliti (ANTHROPIC_API_KEY)](#5-claude-api-kaliti-anthropic_api_key)
+5. [AI kaliti (GEMINI_API_KEY) — ixtiyoriy](#5-ai-kaliti-gemini_api_key--ixtiyoriy)
 6. [O'rnatish](#6-ornatish)
 7. [.env faylini to'ldirish](#7-env-faylini-toldirish)
 8. [Ishga tushirish](#8-ishga-tushirish)
@@ -103,14 +104,31 @@ CHANNEL_ID=@poyabzal_optom
 
 ---
 
-## 5. Claude API kaliti (ANTHROPIC_API_KEY)
+## 5. AI kaliti (GEMINI_API_KEY) — ixtiyoriy
 
-1. <https://console.anthropic.com> ga kiring va ro'yxatdan o'ting.
-2. **Billing** bo'limida hisobingizni to'ldiring (bir necha dollar ko'p vaqtga yetadi — har bir tavsif juda arzon).
-3. **API Keys** → **Create Key** → nom bering → hosil bo'lgan `sk-ant-...` bilan boshlanuvchi kalitni nusxalang.
-   Bu kalit faqat **bir marta** ko'rsatiladi, darhol saqlab qo'ying.
+Tavsifni AI yozishi uchun kalit kerak. **Kalitsiz ham bot to'liq ishlaydi** — faqat tavsif
+har safar bir xil tayyor shablon bo'yicha yoziladi. Avval kalitsiz sinab ko'rsangiz ham bo'ladi.
 
-> Agar kalit ishlamasa ham bot to'xtamaydi — tavsifni tayyor **shablon** bo'yicha yozadi va sizga ogohlantirish chiqaradi.
+### Google Gemini (tavsiya — bepul limiti bor)
+
+1. <https://aistudio.google.com/apikey> ga Google akkauntingiz (Gmail) bilan kiring.
+2. **Create API key** (API kalit yaratish) tugmasini bosing.
+3. Hosil bo'lgan `AIza...` bilan boshlanuvchi kalitni nusxalang — bu **GEMINI_API_KEY**.
+
+Bilishingiz kerak:
+- Bepul rejada kunlik/daqiqalik **limit** bor. Limit tugasa bot to'xtamaydi — o'sha postni shablon bilan yozadi, keyin limit o'zi tiklanadi.
+- Bepul rejada Google yuborilgan matnlardan o'z xizmatlarini yaxshilash uchun foydalanishi mumkin. Botdan AI ga faqat brend, sotish narxi, pachka soni va qo'shimcha ma'lumot boradi — **kelish narxi va manba hech qachon yuborilmaydi**.
+- Limit va shartlar vaqti-vaqti bilan o'zgaradi — aniq ma'lumot AI Studio saytida.
+- Agar "model topilmadi" degan ogohlantirish chiqsa, `.env` dagi `GEMINI_MODEL` ni AI Studio da ko'rsatilgan boshqa modelga (masalan `gemini-2.5-flash`) almashtiring.
+
+### Claude (ixtiyoriy, pullik)
+
+O'zbekcha matn sifati yuqoriroq, har bir tavsif taxminan 1 sent turadi.
+<https://console.anthropic.com> da hisobni to'ldirib, **API Keys** dan `sk-ant-...` kalit oling va `.env` da:
+```env
+AI_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
 ---
 
@@ -154,15 +172,19 @@ Maxfiy ma'lumotlar kodda emas, `.env` degan faylda saqlanadi.
 2. `.env` ni istalgan matn muharririda (Notepad, VS Code) oching va to'ldiring:
 
 ```env
-BOT_TOKEN=7123456789:AAHk3j...        # 2-bo'limdan
-CHANNEL_ID=-1001987654321             # 4-bo'limdan (yoki @kanal_username)
-ADMIN_ID=123456789                    # 3-bo'limdan
-ANTHROPIC_API_KEY=sk-ant-...          # 5-bo'limdan
+BOT_TOKEN=7123456789:AAHk3j...
+CHANNEL_ID=-1001987654321
+ADMIN_ID=123456789
 
-CLAUDE_MODEL=claude-sonnet-5
+AI_PROVIDER=gemini
+GEMINI_API_KEY=AIza...
+
 SHOP_NAME=Poyabzal Optom
-CONTACT=+998 90 123 45 67 yoki @sizning_username
+CONTACT=+998 90 123 45 67
 ```
+
+- `BOT_TOKEN` — 2-bo'limdan, `ADMIN_ID` — 3-bo'limdan, `CHANNEL_ID` — 4-bo'limdan (yoki `@kanal_username`).
+- `GEMINI_API_KEY` — 5-bo'limdan. **Bo'sh qoldirsangiz ham bo'ladi** — unda tavsif shablon bo'yicha yoziladi.
 
 > ⚠️ `=` belgisi atrofida bo'sh joy qoldirmang. Qo'shtirnoq kerak emas.
 > ⚠️ `.env` faylini hech kimga yubormang va internetga joylamang.
@@ -279,7 +301,8 @@ razmer 39-44, qora rang, pachkada 6 juft
 | `[XATO] BOT_TOKEN .env faylida to'ldirilmagan` | `.env` fayli `main.py` bilan bitta papkada ekanini va to'ldirilganini tekshiring. Fayl nomi aynan `.env` bo'lsin (`.env.txt` emas). |
 | Bot javob bermayapti | Terminalda bot ishlab turganini tekshiring. `ADMIN_ID` to'g'rimi? |
 | "Kanalga joylab bo'lmadi" | Bot kanalda **admin**mi va "Xabar joylash" huquqi bormi? `CHANNEL_ID` `-100` bilan boshlanadimi? |
-| "shablon ishlatildi" degan ogohlantirish | `ANTHROPIC_API_KEY` noto'g'ri yoki hisobda mablag' tugagan. Console da tekshiring. |
+| "shablon ishlatildi" degan ogohlantirish | Ogohlantirishda sababi yozilgan: kalit noto'g'ri (`GEMINI_API_KEY` ni tekshiring), bepul limit tugagan (biroz kuting) yoki model topilmadi (`GEMINI_MODEL` ni o'zgartiring). |
+| "AI kaliti yo'q" | `.env` da `GEMINI_API_KEY` bo'sh. Bu xato emas — shablon ishlaydi. AI kerak bo'lsa, 5-bo'limga qarang. |
 | "fonni olib bo'lmadi" | Rasm juda qorong'i yoki mahsulot fon bilan bir xil rangda. Yorug'roq, oddiy fonda suratga oling. |
 | `/tugadi` xabarni o'chira olmadi | Botga "Xabarlarni o'chirish" huquqini bering. Telegram juda eski xabarlarni o'chirishga ruxsat bermasligi mumkin — ularni qo'lda o'chiring. |
 | `pip` topilmadi | Windows da Python ni qayta o'rnating va **"Add Python to PATH"** ni belgilang. |
@@ -307,7 +330,7 @@ poyabzal-bot/
 ├── services/
 │   ├── caption_parser.py   # izohdan brend/pachka/narxlarni ajratish
 │   ├── image_service.py    # rembg + studiya fon
-│   ├── ai_service.py       # Claude API, kelish narxi sizib chiqishidan himoya
+│   ├── ai_service.py       # Gemini / Claude / shablon, kelish narxi sizib chiqishidan himoya
 │   ├── channel_service.py  # kanalga joylash / o'chirish (sayt integratsiyasi uchun)
 │   └── database.py         # SQLite repository
 ├── models/
