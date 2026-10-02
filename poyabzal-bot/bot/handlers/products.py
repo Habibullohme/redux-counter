@@ -1,21 +1,27 @@
-"""Asosiy ish: rasm + izoh → qayta ishlash → ko'rib chiqish → kanalga joylash."""
+"""Asosiy ish: rasm(lar) + izoh → qayta ishlash → ko'rib chiqish → kanalga joylash.
+
+Har bir rasm alohida mahsulot (masalan, bir modelning bir rangi) va kanalga alohida post
+bo'lib chiqadi; izoh (tavsif) hammasida bir xil. Tasdiqlash tugmasi bitta — hammasi uchun.
+"""
 from __future__ import annotations
 
 import asyncio
 import html
 import logging
+import re
+import secrets
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from bot.filters import IsAdmin
-from bot.keyboards import ProductAction, confirm_keyboard
+from bot.keyboards import BatchAction, ProductAction, confirm_keyboard
 from config import Settings
-from models.product import ParsedCaption, ProcessedPhoto, ProductImage
+from models.product import ParsedCaption, ProcessedPhoto, ProductImage, ProductStatus
 from services.ai_service import AIService, build_channel_caption, format_money
 from services.caption_parser import parse_caption
-from services.channel_service import publish_album
+from services.channel_service import publish_photo
 from services.database import Database
 from services.image_service import ImageService, save_images
 
@@ -50,22 +56,30 @@ def _find_caption(album: list[Message]) -> str:
     return ""
 
 
-def _admin_summary(product_id: int, parsed: ParsedCaption, notes: list[str]) -> str:
+def _admin_summary(product_ids: list[int], parsed: ParsedCaption, notes: list[str]) -> str:
+    count = len(product_ids)
+    ids_text = f"#{product_ids[0]}" if count == 1 else f"#{product_ids[0]}–#{product_ids[-1]}"
+    total_packs = (parsed.packs or 0) * count
     lines = [
-        f"🧾 <b>Mahsulot #{product_id}</b> — faqat siz ko'rasiz",
+        f"🧾 <b>{count} ta mahsulot ({ids_text})</b> — faqat siz ko'rasiz",
         "",
         f"👞 Brend: <b>{html.escape(parsed.brand or '')}</b>",
         f"🚚 Manba: {html.escape(parsed.source or 'yozilmagan')}",
-        f"📦 Pachka: {parsed.packs}",
-        f"💵 Kelish: {format_money(parsed.cost_price)} so'm",
-        f"💰 Sotish: {format_money(parsed.sale_price)} so'm",
+    ]
+    if count == 1:
+        lines.append(f"📦 Pachka: {parsed.packs}")
+    else:
+        lines.append(f"📦 Har bir rasm (rang) uchun: {parsed.packs} pachka — jami {count} × {parsed.packs} = {total_packs} pachka")
+    lines += [
+        f"💵 Kelish: {format_money(parsed.cost_price)} so'm (1 pachka)",
+        f"💰 Sotish: {format_money(parsed.sale_price)} so'm (1 pachka)",
     ]
     if parsed.cost_price and parsed.sale_price and parsed.packs:
         per_pack = parsed.sale_price - parsed.cost_price
         emoji = "📈" if per_pack >= 0 else "📉"
         lines.append(
             f"{emoji} Foyda: {format_money(per_pack)} so'm/pachka, "
-            f"jami {format_money(per_pack * parsed.packs)} so'm"
+            f"jami {format_money(per_pack * total_packs)} so'm"
         )
     elif not parsed.cost_price:
         lines.append("⚠️ Kelish narxi yozilmagan — foyda hisoblanmadi")
@@ -73,8 +87,18 @@ def _admin_summary(product_id: int, parsed: ParsedCaption, notes: list[str]) -> 
         lines.append(f"ℹ️ Qo'shimcha: {html.escape(parsed.extra)}")
     if notes:
         lines += ["", *[f"⚠️ {html.escape(n)}" for n in notes]]
-    lines += ["", "Yuqoridagi albom kanalda aynan shunday ko'rinadi. Joylaymi?"]
+    if count == 1:
+        lines += ["", CONFIRM_QUESTION_ONE]
+    else:
+        lines += ["", CONFIRM_QUESTION_MANY.format(count=count)]
     return "\n".join(lines)
+
+
+CONFIRM_QUESTION_ONE = "Yuqoridagi post kanalda aynan shunday ko'rinadi. Joylaymi?"
+CONFIRM_QUESTION_MANY = (
+    "Yuqoridagi {count} ta rasm kanalga {count} ta alohida post bo'lib chiqadi, "
+    "har birida shu tavsif. Joylaymi?"
+)
 
 
 @router.message(IMAGE_FILTER)
@@ -110,11 +134,14 @@ async def on_photos(
         await message.reply("Rasm topilmadi. Iltimos, rasm yuboring (20 MB gacha).")
         return
 
-    status = await message.answer(f"⏳ {len(files)} ta rasm qayta ishlanmoqda va tavsif yozilmoqda...")
-    product_id: int | None = None
+    status = await message.answer(
+        f"⏳ {len(files)} ta rasm qayta ishlanmoqda (har biriga ~20–60 soniya)..."
+    )
+    batch_id = secrets.token_hex(4)
+    product_ids: list[int] = []
     ai_task: asyncio.Task | None = None
     try:
-        # AI tavsifini rasm bilan parallel boshlaymiz — vaqt tejaladi
+        # Tavsif barcha rasmlar uchun bitta — uni rasm bilan parallel tayyorlaymiz
         ai_task = asyncio.create_task(ai.generate_description(parsed))
 
         processed: list[ProcessedPhoto] = []
@@ -123,7 +150,7 @@ async def on_photos(
             try:
                 buffer = await bot.download(file_id)
                 processed.append(await images.process(file_id, buffer.read()))
-            except Exception:  # noqa: BLE001 — bitta buzuq rasm butun albomni to'xtatmasin
+            except Exception:  # noqa: BLE001 — bitta buzuq rasm hammasini to'xtatmasin
                 log.exception("Rasmni yuklab/ochib bo'lmadi: %s", file_id)
                 unreadable += 1
             if len(files) > 1:
@@ -144,100 +171,120 @@ async def on_photos(
         description = await ai_task
         if description.note:
             notes.append(description.note)
-
-        # Bazaga yozish
-        product_id = await db.create_product(shop_id, parsed, description.text)
-        paths = await asyncio.to_thread(
-            save_images, settings.images_dir, product_id, [p.jpeg_bytes for p in processed]
-        )
-        await db.add_images(
-            product_id,
-            [
-                ProductImage(product_id=product_id, position=i, original_file_id=p.original_file_id, local_path=path)
-                for i, (p, path) in enumerate(zip(processed, paths))
-            ],
-        )
-
-        # Ko'rinishni adminga yuborish
         caption = build_channel_caption(description.text, settings.contact)
-        media = [
-            InputMediaPhoto(
-                media=BufferedInputFile(p.jpeg_bytes, filename=f"{product_id}_{i + 1}.jpg"),
-                caption=caption if i == 0 else None,
+
+        # Har bir rasm — alohida mahsulot (rang) va alohida post
+        for photo in processed:
+            product_id = await db.create_product(shop_id, parsed, description.text, batch_id)
+            product_ids.append(product_id)
+            paths = await asyncio.to_thread(save_images, settings.images_dir, product_id, [photo.jpeg_bytes])
+            await db.add_images(
+                product_id,
+                [ProductImage(product_id=product_id, position=0, original_file_id=photo.original_file_id, local_path=paths[0])],
+            )
+            preview = await bot.send_photo(
+                chat_id=message.chat.id,
+                photo=BufferedInputFile(photo.jpeg_bytes, filename=f"{product_id}.jpg"),
+                caption=caption,
                 parse_mode="HTML",
             )
-            for i, p in enumerate(processed)
-        ]
-        preview = await bot.send_media_group(chat_id=message.chat.id, media=media)
-        await db.set_processed_file_ids(product_id, [m.photo[-1].file_id for m in preview if m.photo])
+            if preview.photo:
+                await db.set_processed_file_ids(product_id, [preview.photo[-1].file_id])
 
         control = await message.answer(
-            _admin_summary(product_id, parsed, notes), reply_markup=confirm_keyboard(product_id)
+            _admin_summary(product_ids, parsed, notes),
+            reply_markup=confirm_keyboard(batch_id, len(product_ids)),
         )
-        await db.set_preview_message(product_id, control.chat.id, control.message_id)
+        for product_id in product_ids:
+            await db.set_preview_message(product_id, control.chat.id, control.message_id)
         await _safe_delete(status)
     except Exception:
         log.exception("Mahsulotni tayyorlashda xato")
         if ai_task is not None and not ai_task.done():
             ai_task.cancel()
-        if product_id is not None:
-            await db.cancel_product(product_id)
+        if product_ids:
+            await db.cancel_batch(batch_id)
         await _safe_edit(
             status,
             "❌ Kutilmagan xato yuz berdi, mahsulot saqlanmadi. Iltimos, qaytadan yuboring.\n"
-            "Xato takrorlansa, bot oynasidagi (terminal) yozuvlarni tekshiring.",
+            "Xato takrorlansa, bot oynasidagi yozuvlarni tekshiring.",
         )
 
 
-@router.callback_query(ProductAction.filter(F.action == "ok"))
+@router.callback_query(BatchAction.filter(F.action == "ok"))
 async def on_confirm(
-    callback: CallbackQuery, callback_data: ProductAction, bot: Bot, db: Database, settings: Settings
+    callback: CallbackQuery, callback_data: BatchAction, bot: Bot, db: Database, settings: Settings
 ) -> None:
-    product_id = callback_data.product_id
-    if not await db.try_start_publishing(product_id):
-        product = await db.get_product(product_id)
-        state = product.status.value if product else "topilmadi"
-        await callback.answer(f"Bu mahsulot allaqachon ko'rib chiqilgan ({state}).", show_alert=True)
+    product_ids = await db.start_publishing_batch(callback_data.batch_id)
+    if not product_ids:
+        await callback.answer("Bu postlar allaqachon ko'rib chiqilgan.", show_alert=True)
         return
 
-    await callback.answer("📤 Kanalga joylanmoqda...")
+    await callback.answer(f"📤 {len(product_ids)} ta post kanalga joylanmoqda...")
+    published: list[int] = []
     try:
-        product = await db.get_product(product_id)
-        imgs = await db.get_images(product_id)
-        file_ids = [i.processed_file_id for i in imgs if i.processed_file_id]
-        if not product or not file_ids:
-            raise RuntimeError("Mahsulot rasmlari bazada topilmadi")
-
-        caption = build_channel_caption(product.description, settings.contact)
-        message_ids = await publish_album(bot, settings.channel_id, file_ids, caption)
-        await db.mark_published(product_id, settings.channel_id, message_ids)
+        for product_id in product_ids:
+            product = await db.get_product(product_id)
+            imgs = await db.get_images(product_id)
+            file_ids = [i.processed_file_id for i in imgs if i.processed_file_id]
+            if not product or not file_ids:
+                raise RuntimeError(f"#{product_id} rasmi bazada topilmadi")
+            caption = build_channel_caption(product.description, settings.contact)
+            message_id = await publish_photo(bot, settings.channel_id, file_ids[0], caption)
+            await db.mark_published(product_id, settings.channel_id, [message_id])
+            published.append(product_id)
+            if len(product_ids) > 1:
+                await asyncio.sleep(1)  # Telegram cheklovlariga tushmaslik uchun
     except (TelegramForbiddenError, TelegramBadRequest) as exc:
-        await db.revert_publishing(product_id)
+        await _revert_unpublished(db, product_ids, published)
         log.error("Kanalga joylab bo'lmadi: %s", exc)
         await _notify(
             callback,
-            "❌ Kanalga joylab bo'lmadi.\n\n"
+            f"❌ Kanalga joylab bo'lmadi ({len(published)}/{len(product_ids)} ta joylandi).\n\n"
             "Tekshiring:\n• CHANNEL_ID to'g'ri yozilganmi\n"
             "• Bot kanalga <b>admin</b> qilib qo'shilganmi va «Xabar joylash» huquqi bormi\n\n"
-            f"<i>Telegram javobi: {html.escape(str(exc))}</i>\n\nTuzatgach, «Tasdiqlash» ni qayta bosing.",
+            f"<i>Telegram javobi: {html.escape(str(exc))}</i>\n\n"
+            "Tuzatgach, «Tasdiqlash» ni qayta bosing — qolganlari joylanadi.",
         )
         return
     except Exception:
-        await db.revert_publishing(product_id)
+        await _revert_unpublished(db, product_ids, published)
         log.exception("Kanalga joylashda xato")
-        await _notify(callback, "❌ Kutilmagan xato. «Tasdiqlash» ni qayta bosib ko'ring.")
+        await _notify(
+            callback,
+            f"❌ Kutilmagan xato ({len(published)}/{len(product_ids)} ta joylandi). "
+            "«Tasdiqlash» ni qayta bosing — qolganlari joylanadi.",
+        )
         return
 
-    await _finish_control_message(callback, f"✅ <b>Kanalga joylandi!</b> (#{product_id})\nYuk tugaganda: <code>/tugadi {product_id}</code>")
+    batch = await db.list_batch(callback_data.batch_id)
+    all_ids = [p.id for p in batch if p.status == ProductStatus.PUBLISHED]
+    example = all_ids[0] if all_ids else product_ids[0]
+    await _finish_control_message(
+        callback,
+        f"✅ <b>Kanalga joylandi!</b> ({', '.join(f'#{i}' for i in all_ids)})\n"
+        f"Biror rang tugasa: <code>/tugadi {example}</code> (o'sha rangning raqami bilan)",
+    )
 
 
-@router.callback_query(ProductAction.filter(F.action == "no"))
-async def on_cancel(callback: CallbackQuery, callback_data: ProductAction, db: Database) -> None:
-    if await db.cancel_product(callback_data.product_id):
+@router.callback_query(BatchAction.filter(F.action == "no"))
+async def on_cancel(callback: CallbackQuery, callback_data: BatchAction, db: Database) -> None:
+    if await db.cancel_batch(callback_data.batch_id):
         await callback.answer("Bekor qilindi")
-        await _finish_control_message(callback, f"❌ <b>Bekor qilindi</b> (#{callback_data.product_id}). Kanalga joylanmadi.")
+        await _finish_control_message(callback, "❌ <b>Bekor qilindi.</b> Kanalga joylanmadi.")
     else:
-        await callback.answer("Bu mahsulot allaqachon ko'rib chiqilgan.", show_alert=True)
+        await callback.answer("Bu postlar allaqachon ko'rib chiqilgan.", show_alert=True)
+
+
+@router.callback_query(ProductAction.filter())
+async def on_old_button(callback: CallbackQuery) -> None:
+    await callback.answer("Bu tugma eskirgan. Rasmlarni qaytadan yuboring.", show_alert=True)
+
+
+async def _revert_unpublished(db: Database, product_ids: list[int], published: list[int]) -> None:
+    for product_id in product_ids:
+        if product_id not in published:
+            await db.revert_publishing(product_id)
 
 
 # ---------- yordamchilar ----------
@@ -248,7 +295,8 @@ async def _finish_control_message(callback: CallbackQuery, footer: str) -> None:
     if not isinstance(msg, Message):
         return
     base = msg.html_text or ""
-    base = base.replace("Yuqoridagi albom kanalda aynan shunday ko'rinadi. Joylaymi?", "").rstrip()
+    base = base.replace(CONFIRM_QUESTION_ONE, "")
+    base = re.sub(r"Yuqoridagi \d+ ta rasm kanalga .*Joylaymi\?", "", base).rstrip()
     try:
         await msg.edit_text(f"{base}\n\n{footer}", reply_markup=None)
     except TelegramAPIError:

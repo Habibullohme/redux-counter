@@ -1,13 +1,19 @@
-"""Rasm bilan ishlash: fonni olib tashlash (rembg) va studiya fonini qo'yish.
+"""Rasm bilan ishlash: fonni olib tashlash va studiya fonini qo'yish.
+
+Fon BiRefNet modeli bilan olib tashlanadi (bepul, MIT litsenziya, kompyuterning o'zida ishlaydi).
+U rasmdagi asosiy predmetni ajratadi; keyin orqada qolgan mayda bo'laklar va boshqa
+predmetlar (javondagi boshqa poyabzallar) tozalanadi — faqat asosiy mahsulot qoladi.
 
 Natija: 1280x1280 JPEG, och gradient fon, yumshoq soya, mahsulot markazda.
-rembg og'ir ish — u alohida oqimda (thread) bajariladi, bot qotib qolmaydi.
+Og'ir ish alohida oqimda (thread) bajariladi, bot qotib qolmaydi.
 """
 from __future__ import annotations
 
 import asyncio
 import io
 import logging
+import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -23,17 +29,25 @@ BOTTOM_COLOR = (226, 230, 236)   # pastki — och kulrang-ko'kish
 MAX_PRODUCT_W = 0.80             # mahsulot kenglik bo'yicha maksimal ulushi
 MAX_PRODUCT_H = 0.68             # balandlik bo'yicha maksimal ulushi
 
+# Modellar (hammasi bepul, kompyuterning o'zida ishlaydi):
+#   birefnet-general       — eng sifatli; ~8 GB operativ xotira, bir rasmga ~30-60 soniya
+#   birefnet-general-lite  — sifatli; ~7 GB xotira, ~15-30 soniya
+#   isnet-general-use      — oddiy; ~1 GB xotira, ~1-3 soniya
+# "auto" — kompyuter xotirasiga qarab eng yaxshisini tanlaydi.
+FALLBACK_MODEL = "isnet-general-use"
+KEEP_RATIO = 0.25                      # eng katta bo'lakning 25% idan kichik bo'laklar o'chiriladi
+
 
 class ImageService:
-    def __init__(self, model_name: str = "isnet-general-use", max_parallel: int = 1) -> None:
-        self.model_name = model_name
+    def __init__(self, model_name: str = "auto", max_parallel: int = 1) -> None:
+        self.model_name = pick_model(model_name)
         self._session = None
         self._session_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._background = self._make_background(CANVAS_SIZE)
 
     async def warmup(self) -> None:
-        """Modelni oldindan yuklaydi (birinchi marta internetdan ~170 MB yuklab olinadi)."""
+        """Modelni oldindan yuklaydi (birinchi marta internetdan yuklab olinadi: 180 MB – 1 GB)."""
         await self._get_session()
 
     async def _get_session(self):
@@ -41,8 +55,15 @@ class ImageService:
             if self._session is None:
                 from rembg import new_session  # og'ir import, faqat kerak bo'lganda
 
-                log.info("rembg modeli yuklanmoqda: %s", self.model_name)
-                self._session = await asyncio.to_thread(new_session, self.model_name)
+                log.info("Fon modeli yuklanmoqda: %s", self.model_name)
+                try:
+                    self._session = await asyncio.to_thread(new_session, self.model_name, sess_opts=_lean_options())
+                except Exception:  # noqa: BLE001 — xotira yetmasa yoki yuklab bo'lmasa
+                    if self.model_name == FALLBACK_MODEL:
+                        raise
+                    log.exception("%s modelini yuklab bo'lmadi, %s ishlatiladi", self.model_name, FALLBACK_MODEL)
+                    self.model_name = FALLBACK_MODEL
+                    self._session = await asyncio.to_thread(new_session, self.model_name, sess_opts=_lean_options())
             return self._session
 
     async def process(self, original_file_id: str, data: bytes) -> ProcessedPhoto:
@@ -67,10 +88,11 @@ class ImageService:
         from rembg import remove
 
         source = self._open(data)
-        cutout = remove(source, session=session, post_process_mask=True)
+        cutout = remove(source, session=session)
         if not isinstance(cutout, Image.Image):
             cutout = Image.open(io.BytesIO(cutout))
         cutout = cutout.convert("RGBA")
+        cutout.putalpha(Image.fromarray(clean_alpha(np.array(cutout.getchannel("A")))))
 
         bbox = cutout.getchannel("A").point(lambda a: 255 if a > 12 else 0).getbbox()
         if not bbox:
@@ -145,6 +167,74 @@ class ImageService:
 
         arr = np.clip(grad + glow - vignette, 0, 255).astype(np.uint8)
         return Image.fromarray(arr, "RGB")
+
+
+def total_ram_gb() -> float:
+    """Kompyuterdagi umumiy operativ xotira (GB). Aniqlab bo'lmasa 0."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            status = MemoryStatus()
+            status.dwLength = ctypes.sizeof(MemoryStatus)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+            return status.ullTotalPhys / 1024**3
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024**3
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def pick_model(requested: str) -> str:
+    if requested and requested != "auto":
+        return requested
+    ram = total_ram_gb()
+    if ram >= 15:
+        model = "birefnet-general"
+    elif ram >= 11:
+        model = "birefnet-general-lite"
+    else:
+        model = FALLBACK_MODEL
+    log.info("Operativ xotira: %.1f GB — fon modeli: %s", ram, model)
+    return model
+
+
+def _lean_options():
+    """Xotirani tejaydigan sozlamalar (katta modellar uchun muhim)."""
+    import onnxruntime as ort
+
+    opts = ort.SessionOptions()
+    opts.enable_cpu_mem_arena = False
+    opts.enable_mem_pattern = False
+    return opts
+
+
+def clean_alpha(alpha: np.ndarray) -> np.ndarray:
+    """Asosiy mahsulotni qoldirib, qolgan mayda bo'laklarni va chetdagi predmetlarni o'chiradi.
+
+    Eng katta bo'lak (mahsulot) va unga yaqin kattalikdagi bo'laklar (masalan, juft poyabzalning
+    ikkinchisi) qoladi; undan kichiklari — fon qoldiqlari — olib tashlanadi.
+    """
+    from scipy import ndimage
+
+    solid = alpha > 32
+    labels, count = ndimage.label(solid)
+    if count <= 1:
+        return alpha
+    sizes = ndimage.sum(solid, labels, index=np.arange(1, count + 1))
+    keep_ids = np.flatnonzero(sizes >= sizes.max() * KEEP_RATIO) + 1
+    keep = np.isin(labels, keep_ids)
+    # Yumshoq qirralarni yo'qotmaslik uchun saqlanadigan hududni biroz kengaytiramiz
+    keep = ndimage.binary_dilation(keep, iterations=4)
+    return np.where(keep, alpha, 0).astype(np.uint8)
 
 
 def save_images(images_dir: Path, product_id: int, photos: list[bytes]) -> list[str]:

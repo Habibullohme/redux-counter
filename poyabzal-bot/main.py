@@ -46,8 +46,10 @@ async def main() -> None:
         settings.gemini_api_key, settings.gemini_model,
         settings.anthropic_api_key, settings.claude_model,
     )
-    ai = AIService(provider)
-    if provider is None:
+    ai = AIService(provider, template_only=settings.ai_provider == "none")
+    if settings.ai_provider == "none":
+        log.info("Tavsiflar shablon bo'yicha yoziladi (AI_PROVIDER=none)")
+    elif provider is None:
         log.warning("AI kaliti yo'q (%s) — tavsiflar shablon bo'yicha yoziladi", settings.ai_provider)
     else:
         log.info("Tavsif yozuvchi AI: %s (%s)", provider.name, provider.model)

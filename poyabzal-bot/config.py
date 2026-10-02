@@ -20,7 +20,7 @@ class Settings:
     bot_token: str
     channel_id: int | str
     admin_id: int
-    ai_provider: str          # "gemini" yoki "claude"
+    ai_provider: str          # "none" (faqat shablon), "gemini" yoki "claude"
     gemini_api_key: str       # bo'sh bo'lsa — shablon rejimi
     gemini_model: str
     anthropic_api_key: str    # bo'sh bo'lsa — shablon rejimi
@@ -71,9 +71,9 @@ def load_settings() -> Settings:
     if not db_path.is_absolute():
         db_path = BASE_DIR / db_path
 
-    ai_provider = os.getenv("AI_PROVIDER", "gemini").strip().lower() or "gemini"
-    if ai_provider not in ("gemini", "claude"):
-        _fail("AI_PROVIDER faqat gemini yoki claude bo'lishi mumkin.")
+    ai_provider = os.getenv("AI_PROVIDER", "none").strip().lower() or "none"
+    if ai_provider not in ("none", "gemini", "claude"):
+        _fail("AI_PROVIDER faqat none, gemini yoki claude bo'lishi mumkin.")
 
     return Settings(
         bot_token=_required("BOT_TOKEN"),
@@ -86,7 +86,8 @@ def load_settings() -> Settings:
         claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip() or "claude-sonnet-5",
         shop_name=os.getenv("SHOP_NAME", "Poyabzal Optom").strip(),
         contact=os.getenv("CONTACT", "").strip(),
-        rembg_model=os.getenv("REMBG_MODEL", "isnet-general-use").strip() or "isnet-general-use",
+        # BG_MODEL: auto (xotiraga qarab), birefnet-general, birefnet-general-lite, isnet-general-use
+        rembg_model=os.getenv("BG_MODEL", "auto").strip() or "auto",
         database_path=db_path,
         images_dir=db_path.parent / "images",
     )

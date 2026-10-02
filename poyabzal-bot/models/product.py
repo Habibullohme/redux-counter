@@ -59,6 +59,7 @@ class Product:
     updated_at: str
     published_at: str | None = None
     barcode: str | None = None
+    batch_id: str | None = None
 
 
 @dataclass

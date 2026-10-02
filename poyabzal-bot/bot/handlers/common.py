@@ -18,17 +18,19 @@ router.message.filter(IsAdmin())
 
 HELP_TEXT = (
     "👋 <b>Assalomu alaykum!</b>\n\n"
-    "Menga mahsulot rasmlarini (bitta yoki albom qilib, 10 tagacha) yuboring va "
+    "Menga mahsulot rasmlarini yuboring (bitta yoki bir nechtasini birga, 10 tagacha) va "
     "<b>izohga</b> ma'lumotni yozing. Masalan:\n\n"
     "<code>Brend: Baldinini, Chorsu, 10 pachka, kelish 150000, sotish 180000</code>\n\n"
-    "Qo'shimcha yozsangiz ham bo'ladi: <code>razmer 39-44, qora, pachkada 6 juft</code>\n\n"
+    "Qo'shimcha yozsangiz ham bo'ladi: <code>razmer 39-44, pachkada 6 juft</code>\n\n"
     "Men:\n"
     "1️⃣ Rasmlar fonini olib, chiroyli studiya foniga qo'yaman\n"
     "2️⃣ Xaridorlar uchun tavsif yozaman (kelish narxi kanalga CHIQMAYDI)\n"
-    "3️⃣ Sizga ko'rsataman — «Tasdiqlash» bossangiz kanalga joylayman\n\n"
+    "3️⃣ Sizga ko'rsataman — «Tasdiqlash» bossangiz, <b>har bir rasmni alohida post</b> qilib kanalga joylayman\n\n"
+    "📦 Bir modelning bir nechta rangini yuborsangiz, pachka soni <b>har bir rang uchun</b> hisoblanadi.\n"
+    "📸 Fon yaxshi tozalanishi uchun poyabzalni qo'lda ushlamay, oddiy fonda suratga oling.\n\n"
     "<b>Buyruqlar:</b>\n"
-    "/mahsulotlar — oxirgi 10 ta mahsulot\n"
-    "/tugadi 12 — 12-raqamli yuk tugadi, kanaldan o'chirish\n"
+    "/mahsulotlar — oxirgi mahsulotlar va raqamlari\n"
+    "/tugadi 12 — 12-raqamli mahsulot (rang) tugadi, kanaldan o'chirish\n"
     "/yordam — shu yordam"
 )
 
@@ -49,7 +51,7 @@ async def cmd_start(message: Message) -> None:
 
 @router.message(Command("mahsulotlar"))
 async def cmd_products(message: Message, db: Database, shop_id: int) -> None:
-    products = await db.list_products(shop_id, limit=10)
+    products = await db.list_products(shop_id, limit=20)
     if not products:
         await message.answer("Hali mahsulot yo'q. Rasm yuborib boshlang 🙂")
         return

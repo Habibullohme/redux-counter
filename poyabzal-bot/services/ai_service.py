@@ -1,6 +1,6 @@
 """AI (Gemini yoki Claude) orqali kanal uchun tavsif yozish.
 
-AI tanlash .env dagi AI_PROVIDER orqali: gemini (bepul limit) yoki claude.
+AI tanlash .env dagi AI_PROVIDER orqali: none (faqat shablon, standart), gemini yoki claude.
 Kalit bo'lmasa yoki AI ishlamasa, tavsif tayyor shablon bo'yicha yoziladi.
 
 MUHIM: AI ga kelish narxi va yuk manbai (Chorsu/Namangan) umuman
@@ -185,8 +185,10 @@ def build_provider(provider: str, gemini_key: str, gemini_model: str, claude_key
 
 
 class AIService:
-    def __init__(self, provider: GeminiProvider | ClaudeProvider | None) -> None:
+    def __init__(self, provider: GeminiProvider | ClaudeProvider | None, template_only: bool = False) -> None:
         self.provider = provider
+        # template_only=True — AI ataylab o'chirilgan (AI_PROVIDER=none), ogohlantirish kerak emas
+        self.template_only = template_only
 
     def _build_user_prompt(self, parsed: ParsedCaption) -> str:
         # Faqat xaridorga ko'rsatsa bo'ladigan ma'lumotlar — kelish narxi va manba YO'Q
@@ -202,7 +204,8 @@ class AIService:
     async def generate_description(self, parsed: ParsedCaption) -> DescriptionResult:
         fallback = template_description(parsed)
         if self.provider is None:
-            return DescriptionResult(fallback, False, "AI kaliti yo'q — tavsif shablon bo'yicha yozildi.")
+            note = "" if self.template_only else "AI kaliti yo'q — tavsif shablon bo'yicha yozildi."
+            return DescriptionResult(fallback, False, note)
 
         try:
             text = await self.provider.write(SYSTEM_PROMPT, self._build_user_prompt(parsed))

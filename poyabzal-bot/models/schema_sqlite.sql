@@ -11,13 +11,14 @@ CREATE TABLE IF NOT EXISTS shops (
     created_at        TEXT    NOT NULL
 );
 
--- Mahsulotlar (bitta albom = bitta yuk/partiya)
+-- Mahsulotlar (bitta rasm = bitta mahsulot/rang; bir albomdagilar bitta batch_id ga ega)
 CREATE TABLE IF NOT EXISTS products (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     shop_id            INTEGER NOT NULL REFERENCES shops(id),
+    batch_id           TEXT,                          -- birga yuborilgan rasmlar guruhi
     brand              TEXT    NOT NULL,
     source             TEXT,                          -- Chorsu / Namangan
-    packs_total        INTEGER NOT NULL,              -- kelgan pachka soni
+    packs_total        INTEGER NOT NULL,              -- kelgan pachka soni (shu rang uchun)
     packs_sold         INTEGER NOT NULL DEFAULT 0,    -- sotilgan (sayt to'ldiradi)
     cost_price         INTEGER,                       -- kelish narxi, 1 pachka (MAXFIY)
     sale_price         INTEGER NOT NULL,              -- sotish narxi, 1 pachka
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS products (
     published_at       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_products_shop_status ON products(shop_id, status);
+-- idx_products_batch indeksi database.py da (eski bazaga ustun qo'shilgandan keyin) yaratiladi
 
 -- Mahsulot rasmlari
 CREATE TABLE IF NOT EXISTS product_images (

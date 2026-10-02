@@ -2,12 +2,14 @@
 
 Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
 
-1. Har bir rasm fonini olib tashlaydi va chiroyli **studiya foni** qo'yadi (och gradient, yumshoq soya, mahsulot markazda).
-2. **AI** (Google Gemini — bepul limit bilan, yoki Claude) yordamida o'zbek tilida xaridorlar uchun qisqa tavsif yozadi.
-   AI kaliti bo'lmasa ham bot ishlaydi — tavsif tayyor shablon bo'yicha yoziladi.
+1. Har bir rasm fonini olib tashlaydi (bepul, kompyuterning o'zida) va chiroyli **studiya foni** qo'yadi:
+   och gradient, yumshoq soya, mahsulot markazda. Orqada qolgan boshqa narsalar va mayda bo'laklar tozalanadi.
+2. Tavsif (sharh) yozadi — standart holatda **tayyor shablon** bo'yicha (bepul).
+   Xohlasangiz AI (Google Gemini yoki Claude) yozadigan qilib qo'yish mumkin.
 3. Sizga **ko'rinishini** yuboradi, ostida ikkita tugma: **✅ Tasdiqlash** va **❌ Bekor qilish**.
-4. Tasdiqlasangiz, kanalga **albom** qilib joylaydi.
-5. Hammasini (kelish narxi ham) bazaga saqlaydi.
+4. Tasdiqlasangiz, **har bir rasmni alohida post** qilib kanalga joylaydi (hammasida bir xil tavsif).
+   Masalan, bir modelning 5 xil rangini yuborsangiz — kanalda 5 ta post, tasdiqlash esa bitta.
+5. Hammasini (kelish narxi ham) bazaga saqlaydi. Har bir rasm (rang) — alohida mahsulot raqami.
 
 > 🔒 **Kelish narxi kanalga hech qachon chiqmaydi.** U AI ga umuman yuborilmaydi, tayyor matn esa
 > qo'shimcha tekshiriladi. Yuk manbai (Chorsu/Namangan) ham kanalga chiqmaydi.
@@ -41,8 +43,13 @@ Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
   ```
   Agar yo'q bo'lsa: <https://www.python.org/downloads/> dan yuklab o'rnating.
   **Windows da** o'rnatishda **"Add Python to PATH"** belgisini albatta qo'ying.
-- Internet (birinchi ishga tushishda ~180 MB rasm modeli yuklab olinadi).
-- Kamida **2 GB** operativ xotira (RAM).
+- Internet (birinchi ishga tushishda rasm modeli yuklab olinadi: 180 MB – 1 GB).
+- Operativ xotira (RAM): kamida **4 GB**. Fon tozalash sifati xotiraga bog'liq — bot o'zi tanlaydi:
+  - **16 GB** va ko'p — eng sifatli model (bir rasmga ~30–60 soniya);
+  - **12 GB** — sifatli model (~15–30 soniya);
+  - **8 GB** va kam — oddiy model (~2 soniya, sifati pastroq).
+
+  Xotirani bilish: **Ctrl+Shift+Esc** → **Производительность / Performance** → **Память / Memory**.
 
 > 💡 **Terminal nima?** Windows da: `Win` tugmasi → `cmd` yoki `PowerShell` deb yozing.
 > macOS da: `Terminal` dasturi. Quyidagi buyruqlarni o'sha yerga yozib `Enter` bosasiz.
@@ -106,8 +113,9 @@ CHANNEL_ID=@poyabzal_optom
 
 ## 5. AI kaliti (GEMINI_API_KEY) — ixtiyoriy
 
-Tavsifni AI yozishi uchun kalit kerak. **Kalitsiz ham bot to'liq ishlaydi** — faqat tavsif
-har safar bir xil tayyor shablon bo'yicha yoziladi. Avval kalitsiz sinab ko'rsangiz ham bo'ladi.
+Standart holatda (`AI_PROVIDER=none`) tavsif **tayyor shablon** bo'yicha yoziladi — bepul va har doim bir xil
+ko'rinishda. AI kerak emas. Agar tavsifni AI yozishini xohlasangiz, `.env` da `AI_PROVIDER=gemini`
+qilib, quyidagi kalitni oling.
 
 ### Google Gemini (tavsiya — bepul limiti bor)
 
@@ -194,15 +202,14 @@ BOT_TOKEN=7123456789:AAHk3j...
 CHANNEL_ID=-1001987654321
 ADMIN_ID=123456789
 
-AI_PROVIDER=gemini
-GEMINI_API_KEY=AIza...
+AI_PROVIDER=none
 
 SHOP_NAME=Poyabzal Optom
 CONTACT=+998 90 123 45 67
 ```
 
 - `BOT_TOKEN` — 2-bo'limdan, `ADMIN_ID` — 3-bo'limdan, `CHANNEL_ID` — 4-bo'limdan (yoki `@kanal_username`).
-- `GEMINI_API_KEY` — 5-bo'limdan. **Bo'sh qoldirsangiz ham bo'ladi** — unda tavsif shablon bo'yicha yoziladi.
+- `AI_PROVIDER=none` — tavsif shablon bo'yicha (bepul). AI kerak bo'lsa 5-bo'limga qarang.
 
 > ⚠️ `=` belgisi atrofida bo'sh joy qoldirmang. Qo'shtirnoq kerak emas.
 > ⚠️ `.env` faylini hech kimga yubormang va internetga joylamang.
@@ -218,7 +225,7 @@ Virtual muhit yoqilgan holda (`(.venv)` ko'rinib turibdi):
 python main.py
 ```
 
-Birinchi marta rasm modeli (~180 MB) yuklab olinadi. Keyin shunday yozuvlarni ko'rasiz:
+Birinchi marta rasm modeli (180 MB – 1 GB) yuklab olinadi. Keyin shunday yozuvlarni ko'rasiz:
 ```
 Bot ishga tushdi: @poyabzal_optom_bot
 Tayyor! Botga rasm yuborishingiz mumkin.
@@ -248,19 +255,19 @@ Botingizga `/start` yuboring → yordam matni kelishi kerak.
    ```
    Brend: Test, Chorsu, 10 pachka, kelish 150000, sotish 180000
    ```
-3. Bot "⏳ qayta ishlanmoqda..." deydi (bitta rasm ~5–15 soniya).
+3. Bot "⏳ qayta ishlanmoqda..." deydi (bitta rasm 2–60 soniya, kompyuterga qarab).
 4. Sizga **studiya fonli rasm + tavsif** keladi, ostida alohida xabarda:
    - kelish narxi, sotish narxi, **foyda** (faqat siz ko'rasiz),
    - **✅ Tasdiqlash** va **❌ Bekor qilish** tugmalari.
 5. Tavsifda **150 000 (kelish narxi) YO'Qligini** tekshiring.
 
-**✅ 3-sinov: albom**
-Galereyadan 2–5 ta rasmni **birga** tanlab yuboring (albom), izohni birinchisiga yozing.
-Hammasi bitta albom bo'lib qaytishi kerak.
+**✅ 3-sinov: bir nechta rang**
+Galereyadan bir modelning 2–5 ta rangini **birga** tanlab yuboring, izohni birinchisiga yozing.
+Har bir rasm alohida keladi, oxirida **bitta** «✅ Tasdiqlash (N ta post)» tugmasi.
 
 **✅ 4-sinov: kanalga joylash**
-**✅ Tasdiqlash** ni bosing → kanalingizni oching → albom tavsif bilan chiqqan bo'lishi kerak.
-Bot xabari "✅ Kanalga joylandi! (#1)" ga o'zgaradi.
+**✅ Tasdiqlash** ni bosing → kanalda har bir rasm **alohida post** bo'lib, bir xil tavsif bilan chiqadi.
+Bot xabari "✅ Kanalga joylandi! (#1, #2, ...)" ga o'zgaradi.
 
 **✅ 5-sinov: bekor qilish**
 Yana bitta rasm yuboring va **❌ Bekor qilish** ni bosing → kanalga hech narsa chiqmasligi kerak.
@@ -284,13 +291,27 @@ Rasmni izohsiz yuboring → bot nima yetishmayotganini aytadi.
 | Nima | Qanday yozish | Majburiy? |
 |---|---|---|
 | Brend | `Brend: Baldinini` | ✅ ha |
-| Pachka soni | `10 pachka` yoki `pachka: 10` | ✅ ha |
+| Pachka soni (**har bir rang uchun**) | `10 pachka` yoki `pachka: 10` | ✅ ha |
 | Sotish narxi (1 pachka) | `sotish 180000` | ✅ ha |
 | Kelish narxi (1 pachka) | `kelish 150000` | foyda hisobi uchun kerak |
 | Manba | `Chorsu` yoki `Namangan` | ixtiyoriy |
 | Qo'shimcha | `razmer 39-44, qora, pachkada 6 juft` | ixtiyoriy (kanalga chiqadi) |
 
 Narxni istalgan ko'rinishda yozish mumkin: `180000`, `180 000`, `180,000`, `180k`, `180 ming`.
+
+**Bir nechta rang yuborsangiz:** har bir rasm = bitta rang = kanalda bitta post. Pachka soni **har bir rang uchun**
+deb hisoblanadi (4 ta rang, `10 pachka` → jami 40 pachka; buni tasdiqlashdan oldin xulosada ko'rasiz).
+Ranglar soni har xil bo'lsa (qora 10, jigarrang 5) — ularni alohida-alohida yuboring.
+Biror rang tugasa — `/tugadi <raqam>` faqat o'sha rangning postini o'chiradi.
+
+### 📸 Fon yaxshi tozalanishi uchun suratga olish maslahatlari
+
+Bepul fon tozalash rasmdagi **asosiy predmetni** ajratadi. Eng yaxshi natija uchun:
+- ✅ Poyabzalni **stol yoki polga qo'yib** suratga oling — **qo'lda ushlamang**.
+  Qo'l poyabzalga tegib turgani uchun dastur uni ham mahsulotning bir qismi deb hisoblaydi va olib tashlay olmaydi.
+- ✅ Orqa fon **oddiy** bo'lsin: oq qog'oz, devor, bir xil rangli mato. Javondagi boshqa poyabzallar ko'rinmasin.
+- ✅ Yorug' joyda, soya kam bo'lsin; poyabzal kadrning markazida, butunligicha ko'rinsin.
+- ❌ Poyabzal va fon bir xil rangda bo'lmasin (qora poyabzal — qora fonda emas).
 
 **Misollar:**
 ```
@@ -306,7 +327,7 @@ razmer 39-44, qora rang, pachkada 6 juft
 ```
 
 **Buyruqlar:**
-- `/mahsulotlar` — oxirgi 10 ta mahsulot va raqamlari
+- `/mahsulotlar` — oxirgi mahsulotlar va raqamlari
 - `/tugadi 12` — 12-raqamli yuk tugadi → kanaldan o'chiriladi
 - `/yordam` — yordam
 
@@ -320,7 +341,9 @@ razmer 39-44, qora rang, pachkada 6 juft
 | Bot javob bermayapti | Terminalda bot ishlab turganini tekshiring. `ADMIN_ID` to'g'rimi? |
 | "Kanalga joylab bo'lmadi" | Bot kanalda **admin**mi va "Xabar joylash" huquqi bormi? `CHANNEL_ID` `-100` bilan boshlanadimi? |
 | "shablon ishlatildi" degan ogohlantirish | Ogohlantirishda sababi yozilgan: kalit noto'g'ri (`GEMINI_API_KEY` ni tekshiring), bepul limit tugagan (biroz kuting) yoki model topilmadi (`GEMINI_MODEL` ni o'zgartiring). |
-| "AI kaliti yo'q" | `.env` da `GEMINI_API_KEY` bo'sh. Bu xato emas — shablon ishlaydi. AI kerak bo'lsa, 5-bo'limga qarang. |
+| "AI kaliti yo'q" | `.env` da `GEMINI_API_KEY` bo'sh. Bu xato emas — shablon ishlaydi. Ogohlantirish kerak bo'lmasa: `AI_PROVIDER=none`. |
+| Fonda qo'l yoki boshqa narsa qolib ketdi | Suratga olish maslahatlariga qarang (10-bo'lim): poyabzalni qo'lda ushlamang, fon oddiy bo'lsin. |
+| Rasm juda sekin ishlanyapti | Kompyuterda xotira 16 GB bo'lsa eng sifatli model ishlaydi (~30–60 soniya). Tezroq kerak bo'lsa `.env` da `BG_MODEL=birefnet-general-lite` yoki `BG_MODEL=isnet-general-use`. |
 | "fonni olib bo'lmadi" | Rasm juda qorong'i yoki mahsulot fon bilan bir xil rangda. Yorug'roq, oddiy fonda suratga oling. |
 | `/tugadi` xabarni o'chira olmadi | Botga "Xabarlarni o'chirish" huquqini bering. Telegram juda eski xabarlarni o'chirishga ruxsat bermasligi mumkin — ularni qo'lda o'chiring. |
 | `pip` topilmadi | Windows da Python ni qayta o'rnating va **"Add Python to PATH"** ni belgilang. |

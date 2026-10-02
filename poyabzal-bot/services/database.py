@@ -58,6 +58,7 @@ class Database:
         self._conn = await asyncio.to_thread(self._connect)
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
         await self._run(lambda c: c.executescript(schema))
+        await self._run(_migrate)
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -86,15 +87,17 @@ class Database:
 
     # ---------- mahsulotlar ----------
 
-    async def create_product(self, shop_id: int, parsed: ParsedCaption, description: str) -> int:
+    async def create_product(
+        self, shop_id: int, parsed: ParsedCaption, description: str, batch_id: str | None = None
+    ) -> int:
         def q(c: sqlite3.Connection) -> int:
             now = _now()
             cur = c.execute(
-                """INSERT INTO products (shop_id, brand, source, packs_total, cost_price, sale_price,
+                """INSERT INTO products (shop_id, batch_id, brand, source, packs_total, cost_price, sale_price,
                        extra_info, raw_caption, description, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    shop_id, parsed.brand, parsed.source, parsed.packs, parsed.cost_price,
+                    shop_id, batch_id, parsed.brand, parsed.source, parsed.packs, parsed.cost_price,
                     parsed.sale_price, parsed.extra, parsed.raw, description,
                     ProductStatus.PENDING.value, now, now,
                 ),
@@ -167,6 +170,47 @@ class Database:
 
         return await self._run(q)
 
+    async def list_batch(self, batch_id: str) -> list[Product]:
+        def q(c: sqlite3.Connection) -> list[Product]:
+            rows = c.execute("SELECT * FROM products WHERE batch_id = ? ORDER BY id", (batch_id,)).fetchall()
+            return [_row_to_product(r) for r in rows]
+
+        return await self._run(q)
+
+    async def start_publishing_batch(self, batch_id: str) -> list[int]:
+        """Guruhdagi kutilayotgan mahsulotlarni 'publishing' ga o'tkazadi va ularning ID larini qaytaradi.
+
+        Butun amal bitta qulf ichida bajariladi, shuning uchun tugma ikki marta bosilsa,
+        ikkinchi bosish bo'sh ro'yxat oladi.
+        """
+
+        def q(c: sqlite3.Connection) -> list[int]:
+            ids = [
+                int(r["id"])
+                for r in c.execute(
+                    "SELECT id FROM products WHERE batch_id = ? AND status = ? ORDER BY id",
+                    (batch_id, ProductStatus.PENDING.value),
+                ).fetchall()
+            ]
+            now = _now()
+            c.executemany(
+                "UPDATE products SET status = ?, updated_at = ? WHERE id = ?",
+                [(ProductStatus.PUBLISHING.value, now, i) for i in ids],
+            )
+            return ids
+
+        return await self._run(q)
+
+    async def cancel_batch(self, batch_id: str) -> int:
+        def q(c: sqlite3.Connection) -> int:
+            cur = c.execute(
+                "UPDATE products SET status = ?, updated_at = ? WHERE batch_id = ? AND status = ?",
+                (ProductStatus.CANCELLED.value, _now(), batch_id, ProductStatus.PENDING.value),
+            )
+            return cur.rowcount
+
+        return await self._run(q)
+
     async def _change_status(self, product_id: int, from_status: ProductStatus, to_status: ProductStatus) -> bool:
         """Holatni faqat kutilgan holatda bo'lsa o'zgartiradi (ikki marta bosishdan himoya)."""
 
@@ -227,6 +271,14 @@ class Database:
         await self._run(q)
 
 
+def _migrate(c: sqlite3.Connection) -> None:
+    """Eski bazaga yangi ustunlarni qo'shadi (ma'lumot o'chmaydi)."""
+    columns = {r["name"] for r in c.execute("PRAGMA table_info(products)").fetchall()}
+    if "batch_id" not in columns:
+        c.execute("ALTER TABLE products ADD COLUMN batch_id TEXT")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_products_batch ON products(batch_id)")
+
+
 def _row_to_product(row: sqlite3.Row) -> Product:
     return Product(
         id=row["id"], shop_id=row["shop_id"], brand=row["brand"], source=row["source"],
@@ -235,4 +287,5 @@ def _row_to_product(row: sqlite3.Row) -> Product:
         raw_caption=row["raw_caption"], description=row["description"],
         status=ProductStatus(row["status"]), created_at=row["created_at"],
         updated_at=row["updated_at"], published_at=row["published_at"], barcode=row["barcode"],
+        batch_id=row["batch_id"],
     )
