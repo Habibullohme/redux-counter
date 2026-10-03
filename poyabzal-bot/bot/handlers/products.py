@@ -165,7 +165,7 @@ async def on_photos(
 
         failed_bg = sum(1 for p in processed if not p.background_removed)
         if failed_bg:
-            notes.append(f"{failed_bg} ta rasmda fonni olib bo'lmadi — asl rasm ishlatildi.")
+            notes.append(f"{failed_bg} ta rasmda mahsulotni ajratib bo'lmadi — oddiyroq ishlov berildi.")
 
         await _safe_edit(status, "✍️ Tavsif tayyorlanmoqda...")
         description = await ai_task

@@ -1,4 +1,11 @@
-"""Rasm bilan ishlash: fonni olib tashlash va studiya fonini qo'yish.
+"""Rasm bilan ishlash. Ikki uslub bor (.env dagi PHOTO_STYLE):
+
+- blur (standart): rasm o'zgarmaydi, faqat mahsulot tiniqlashtiriladi, orqa fon esa
+  telefonlardagi «portret rejimi» kabi xiralashtiriladi. Fon olib tashlanmagani uchun
+  kichik xatolar ko'rinmaydi va rasm tabiiy chiqadi.
+- studio: fon butunlay olib tashlanib, och gradientli studiya foni qo'yiladi.
+
+Ikkala uslubda ham mahsulot qayerdaligini aniqlash uchun bir xil model ishlatiladi.
 
 Fon BiRefNet modeli bilan olib tashlanadi (bepul, MIT litsenziya, kompyuterning o'zida ishlaydi).
 U rasmdagi asosiy predmetni ajratadi; keyin orqada qolgan mayda bo'laklar va boshqa
@@ -17,7 +24,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 from models.product import ProcessedPhoto
 
@@ -39,9 +46,13 @@ FALLBACK_MODEL = "isnet-general-use"
 KEEP_RATIO = 0.25                      # eng katta bo'lakning 25% idan kichik bo'laklar o'chiriladi
 
 
+BLUR_LONG_SIDE = 1600           # blur uslubida natijaning uzun tomoni (piksel)
+
+
 class ImageService:
-    def __init__(self, model_name: str = "auto", max_parallel: int = 1) -> None:
+    def __init__(self, model_name: str = "auto", style: str = "blur", max_parallel: int = 1) -> None:
         self.model_name = pick_model(model_name)
+        self.style = style if style in ("blur", "studio") else "blur"
         self._session = None
         self._session_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(max_parallel)
@@ -93,7 +104,10 @@ class ImageService:
         if not isinstance(cutout, Image.Image):
             cutout = Image.open(io.BytesIO(cutout))
         cutout = cutout.convert("RGBA")
-        cutout.putalpha(Image.fromarray(clean_alpha(np.array(cutout.getchannel("A")))))
+        alpha = clean_alpha(np.array(cutout.getchannel("A")))
+        if self.style == "blur":
+            return blur_background(source, alpha)
+        cutout.putalpha(Image.fromarray(alpha))
 
         bbox = cutout.getchannel("A").point(lambda a: 255 if a > 12 else 0).getbbox()
         if not bbox:
@@ -102,9 +116,12 @@ class ImageService:
         return self._compose(cutout)
 
     def _fallback_sync(self, data: bytes) -> bytes:
-        """Fon olib tashlanmasa — asl rasmni o'zgartirmasdan studiya foni markaziga qo'yamiz."""
-        img = self._open(data).convert("RGBA")
-        return self._compose(img, with_shadow=False)
+        """Mahsulotni aniqlab bo'lmasa: blur uslubida butun rasm tiniqlashtiriladi,
+        studio uslubida asl rasm studiya foni markaziga qo'yiladi."""
+        img = self._open(data)
+        if self.style == "blur":
+            return _to_jpeg(_limit_size(_enhance(img.convert("RGB"))))
+        return self._compose(img.convert("RGBA"), with_shadow=False)
 
     @staticmethod
     def _open(data: bytes) -> Image.Image:
@@ -231,6 +248,56 @@ def clean_alpha(alpha: np.ndarray) -> np.ndarray:
     # Yumshoq qirralarni yo'qotmaslik uchun saqlanadigan hududni biroz kengaytiramiz
     keep = ndimage.binary_dilation(keep, iterations=4)
     return np.where(keep, alpha, 0).astype(np.uint8)
+
+
+def _enhance(img: Image.Image) -> Image.Image:
+    """Mahsulotni tiniqlashtirish: keskinlik, biroz kontrast va rang."""
+    img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=90, threshold=2))
+    img = ImageEnhance.Contrast(img).enhance(1.06)
+    return ImageEnhance.Color(img).enhance(1.05)
+
+
+def _limit_size(img: Image.Image) -> Image.Image:
+    img = img.copy()
+    img.thumbnail((BLUR_LONG_SIDE, BLUR_LONG_SIDE), Image.LANCZOS)
+    return img
+
+
+def _to_jpeg(img: Image.Image) -> bytes:
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=92, optimize=True, progressive=True)
+    return out.getvalue()
+
+
+def blur_background(source: Image.Image, alpha: np.ndarray) -> bytes:
+    """Mahsulot tiniq, orqa fon «portret rejimi»dagidek xira."""
+    img = source.convert("RGB")
+    if alpha.max() == 0:
+        return _to_jpeg(_limit_size(_enhance(img)))
+    w, h = img.size
+
+    # Mahsulot niqobi: chetlarini biroz kengaytirib, yumshatamiz
+    mask = Image.fromarray(alpha).filter(ImageFilter.MaxFilter(5))
+    mask = mask.filter(ImageFilter.GaussianBlur(max(2, max(w, h) // 400)))
+    m = np.asarray(mask, dtype=np.float32)[..., None] / 255.0
+
+    # Fon: mahsulotni chiqarib tashlab xiralashtiramiz — shunda mahsulot atrofida qora «halo» bo'lmaydi
+    radius = max(8, int(max(w, h) * 0.022))
+    arr = np.asarray(img, dtype=np.float32)
+    bg_weight = 1.0 - m
+    num = Image.fromarray(np.clip(arr * bg_weight, 0, 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(radius))
+    den = Image.fromarray((bg_weight[..., 0] * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(radius))
+    num_a = np.asarray(num, dtype=np.float32)
+    den_a = np.asarray(den, dtype=np.float32)[..., None] / 255.0
+    plain = np.asarray(img.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32)
+    bg = np.where(den_a > 0.05, num_a / np.maximum(den_a, 0.05), plain)
+    bg = bg * 0.85 + 255 * 0.09                      # fon biroz yorug'roq — mahsulot ajralib turadi
+    gray = bg.mean(axis=2, keepdims=True)
+    bg = bg * 0.8 + gray * 0.2                       # fon ranglari biroz so'nadi
+
+    fg = np.asarray(_enhance(img), dtype=np.float32)
+    out = np.clip(fg * m + bg * (1.0 - m), 0, 255).astype(np.uint8)
+    return _to_jpeg(_limit_size(Image.fromarray(out)))
 
 
 def save_images(images_dir: Path, product_id: int, photos: list[bytes]) -> list[str]:

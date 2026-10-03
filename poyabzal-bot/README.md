@@ -2,8 +2,9 @@
 
 Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
 
-1. Har bir rasm fonini olib tashlaydi (bepul, kompyuterning o'zida) va chiroyli **studiya foni** qo'yadi:
-   och gradient, yumshoq soya, mahsulot markazda. Orqada qolgan boshqa narsalar va mayda bo'laklar tozalanadi.
+1. Har bir rasmda mahsulotni **tiniqlashtiradi**, orqa fonni esa telefonlardagi «portret rejimi» kabi
+   **xiralashtiradi** (bepul, kompyuterning o'zida). Xohlasangiz, fonni butunlay olib tashlab,
+   oq **studiya foni** qo'yadigan qilish mumkin (`.env` da `PHOTO_STYLE=studio`).
 2. Tavsif (sharh) yozadi — standart holatda **tayyor shablon** bo'yicha (bepul).
    Xohlasangiz AI (Google Gemini yoki Claude) yozadigan qilib qo'yish mumkin.
 3. Sizga **ko'rinishini** yuboradi, ostida ikkita tugma: **✅ Tasdiqlash** va **❌ Bekor qilish**.
@@ -44,9 +45,9 @@ Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
   Agar yo'q bo'lsa: <https://www.python.org/downloads/> dan yuklab o'rnating.
   **Windows da** o'rnatishda **"Add Python to PATH"** belgisini albatta qo'ying.
 - Internet (birinchi ishga tushishda rasm modeli yuklab olinadi: 180 MB – 1 GB).
-- Operativ xotira (RAM): kamida **4 GB**. Fon tozalash sifati xotiraga bog'liq — bot o'zi tanlaydi:
-  - **12 GB** va ko'p — eng sifatli model: qo'l va orqadagi poyabzallarni ham olib tashlaydi (bir rasmga ~30–60 soniya);
-  - **8 GB** va kam — oddiy model (~2 soniya): faqat oddiy fonda (oq qog'oz, devor) yaxshi ishlaydi.
+- Operativ xotira (RAM): kamida **4 GB**. Mahsulotni fondan ajratish sifati xotiraga bog'liq — bot o'zi tanlaydi:
+  - **12 GB** va ko'p — eng sifatli model: faqat poyabzal tiniq qoladi, qo'l va javon xiralashadi (bir rasmga ~30–60 soniya);
+  - **8 GB** va kam — oddiy model (~2 soniya): yonidagi poyabzallar ham ba'zan tiniq qolib ketadi.
     8 GB da ham sifatlisini majburan yoqish mumkin (`.env` da `BG_MODEL=birefnet-general`), lekin kompyuter sekinlashadi.
 
   Xotirani bilish: **Ctrl+Shift+Esc** → **Производительность / Performance** → **Память / Memory**.

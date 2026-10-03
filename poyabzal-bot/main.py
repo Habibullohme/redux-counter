@@ -40,7 +40,7 @@ async def main() -> None:
     await db.init()
     shop_id = await db.get_or_create_shop(settings.admin_id, settings.shop_name, settings.channel_id)
 
-    images = ImageService(settings.rembg_model)
+    images = ImageService(settings.rembg_model, settings.photo_style)
     provider = build_provider(
         settings.ai_provider,
         settings.gemini_api_key, settings.gemini_model,
