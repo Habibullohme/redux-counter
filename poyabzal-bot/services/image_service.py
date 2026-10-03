@@ -30,10 +30,11 @@ MAX_PRODUCT_W = 0.80             # mahsulot kenglik bo'yicha maksimal ulushi
 MAX_PRODUCT_H = 0.68             # balandlik bo'yicha maksimal ulushi
 
 # Modellar (hammasi bepul, kompyuterning o'zida ishlaydi):
-#   birefnet-general       — eng sifatli; ~8 GB operativ xotira, bir rasmga ~30-60 soniya
-#   birefnet-general-lite  — sifatli; ~7 GB xotira, ~15-30 soniya
-#   isnet-general-use      — oddiy; ~1 GB xotira, ~1-3 soniya
-# "auto" — kompyuter xotirasiga qarab eng yaxshisini tanlaydi.
+#   birefnet-general       — eng sifatli: qo'l va orqadagi narsalarni ham olib tashlaydi;
+#                            ~8 GB operativ xotira ishlatadi, bir rasmga ~30-60 soniya
+#   birefnet-general-lite  — ~7 GB xotira, ~20 soniya; do'kon suratlarida sezilarli yomonroq
+#   isnet-general-use      — ~1 GB xotira, ~2 soniya; faqat oddiy fonda yaxshi ishlaydi
+# "auto" — xotira yetsa birefnet-general, aks holda isnet-general-use.
 FALLBACK_MODEL = "isnet-general-use"
 KEEP_RATIO = 0.25                      # eng katta bo'lakning 25% idan kichik bo'laklar o'chiriladi
 
@@ -197,12 +198,7 @@ def pick_model(requested: str) -> str:
     if requested and requested != "auto":
         return requested
     ram = total_ram_gb()
-    if ram >= 15:
-        model = "birefnet-general"
-    elif ram >= 11:
-        model = "birefnet-general-lite"
-    else:
-        model = FALLBACK_MODEL
+    model = "birefnet-general" if ram >= 11 else FALLBACK_MODEL
     log.info("Operativ xotira: %.1f GB — fon modeli: %s", ram, model)
     return model
 

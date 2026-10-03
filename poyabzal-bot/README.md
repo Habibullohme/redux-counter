@@ -45,9 +45,9 @@ Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
   **Windows da** o'rnatishda **"Add Python to PATH"** belgisini albatta qo'ying.
 - Internet (birinchi ishga tushishda rasm modeli yuklab olinadi: 180 MB – 1 GB).
 - Operativ xotira (RAM): kamida **4 GB**. Fon tozalash sifati xotiraga bog'liq — bot o'zi tanlaydi:
-  - **16 GB** va ko'p — eng sifatli model (bir rasmga ~30–60 soniya);
-  - **12 GB** — sifatli model (~15–30 soniya);
-  - **8 GB** va kam — oddiy model (~2 soniya, sifati pastroq).
+  - **12 GB** va ko'p — eng sifatli model: qo'l va orqadagi poyabzallarni ham olib tashlaydi (bir rasmga ~30–60 soniya);
+  - **8 GB** va kam — oddiy model (~2 soniya): faqat oddiy fonda (oq qog'oz, devor) yaxshi ishlaydi.
+    8 GB da ham sifatlisini majburan yoqish mumkin (`.env` da `BG_MODEL=birefnet-general`), lekin kompyuter sekinlashadi.
 
   Xotirani bilish: **Ctrl+Shift+Esc** → **Производительность / Performance** → **Память / Memory**.
 
@@ -307,8 +307,9 @@ Biror rang tugasa — `/tugadi <raqam>` faqat o'sha rangning postini o'chiradi.
 ### 📸 Fon yaxshi tozalanishi uchun suratga olish maslahatlari
 
 Bepul fon tozalash rasmdagi **asosiy predmetni** ajratadi. Eng yaxshi natija uchun:
-- ✅ Poyabzalni **stol yoki polga qo'yib** suratga oling — **qo'lda ushlamang**.
-  Qo'l poyabzalga tegib turgani uchun dastur uni ham mahsulotning bir qismi deb hisoblaydi va olib tashlay olmaydi.
+- ✅ Eng sifatli model (12 GB+ xotira) qo'lni ham olib tashlaydi. Lekin oddiy model ishlasa,
+  poyabzalni **stol yoki polga qo'yib** suratga oling — qo'lni u olib tashlay olmaydi.
+- ✅ Qo'lda ushlasangiz, poyabzalning **tagida boshqa poyabzal tegib turmasin** — tegib tursa, ikkalasi bitta narsa deb qolishi mumkin.
 - ✅ Orqa fon **oddiy** bo'lsin: oq qog'oz, devor, bir xil rangli mato. Javondagi boshqa poyabzallar ko'rinmasin.
 - ✅ Yorug' joyda, soya kam bo'lsin; poyabzal kadrning markazida, butunligicha ko'rinsin.
 - ❌ Poyabzal va fon bir xil rangda bo'lmasin (qora poyabzal — qora fonda emas).
@@ -343,7 +344,7 @@ razmer 39-44, qora rang, pachkada 6 juft
 | "shablon ishlatildi" degan ogohlantirish | Ogohlantirishda sababi yozilgan: kalit noto'g'ri (`GEMINI_API_KEY` ni tekshiring), bepul limit tugagan (biroz kuting) yoki model topilmadi (`GEMINI_MODEL` ni o'zgartiring). |
 | "AI kaliti yo'q" | `.env` da `GEMINI_API_KEY` bo'sh. Bu xato emas — shablon ishlaydi. Ogohlantirish kerak bo'lmasa: `AI_PROVIDER=none`. |
 | Fonda qo'l yoki boshqa narsa qolib ketdi | Suratga olish maslahatlariga qarang (10-bo'lim): poyabzalni qo'lda ushlamang, fon oddiy bo'lsin. |
-| Rasm juda sekin ishlanyapti | Kompyuterda xotira 16 GB bo'lsa eng sifatli model ishlaydi (~30–60 soniya). Tezroq kerak bo'lsa `.env` da `BG_MODEL=birefnet-general-lite` yoki `BG_MODEL=isnet-general-use`. |
+| Rasm juda sekin ishlanyapti | Eng sifatli model bir rasmga ~30–60 soniya sarflaydi — bu normal. Tezroq kerak bo'lsa `.env` da `BG_MODEL=isnet-general-use` (lekin sifati pastroq). |
 | "fonni olib bo'lmadi" | Rasm juda qorong'i yoki mahsulot fon bilan bir xil rangda. Yorug'roq, oddiy fonda suratga oling. |
 | `/tugadi` xabarni o'chira olmadi | Botga "Xabarlarni o'chirish" huquqini bering. Telegram juda eski xabarlarni o'chirishga ruxsat bermasligi mumkin — ularni qo'lda o'chiring. |
 | `pip` topilmadi | Windows da Python ni qayta o'rnating va **"Add Python to PATH"** ni belgilang. |
