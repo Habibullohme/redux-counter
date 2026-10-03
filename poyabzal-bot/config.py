@@ -1,0 +1,95 @@
+"""Sozlamalar: barcha maxfiy ma'lumotlar .env faylidan o'qiladi.
+
+Kodga hech qanday token yoki kalit yozilmaydi.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
+
+@dataclass(frozen=True)
+class Settings:
+    bot_token: str
+    channel_id: int | str
+    admin_id: int
+    ai_provider: str          # "none" (faqat shablon), "gemini" yoki "claude"
+    gemini_api_key: str       # bo'sh bo'lsa — shablon rejimi
+    gemini_model: str
+    anthropic_api_key: str    # bo'sh bo'lsa — shablon rejimi
+    claude_model: str
+    shop_name: str
+    contact: str
+    rembg_model: str
+    photo_style: str          # "portrait" (iPhone fokus rejimi), "blur" yoki "studio"
+    database_path: Path
+    images_dir: Path
+
+
+def _fail(message: str) -> None:
+    print(f"\n[XATO] {message}\n.env faylini tekshiring (README.md ga qarang).\n", file=sys.stderr)
+    sys.exit(1)
+
+
+def _is_placeholder(value: str) -> bool:
+    return not value or "..." in value or "bu-yerga" in value
+
+
+def _required(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if _is_placeholder(value):
+        _fail(f"{name} .env faylida to'ldirilmagan.")
+    return value
+
+
+def _optional_key(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    return "" if _is_placeholder(value) else value
+
+
+def _parse_channel_id(raw: str) -> int | str:
+    # "-1001234567890" -> int, "@kanalim" -> str
+    if raw.lstrip("-").isdigit():
+        return int(raw)
+    if not raw.startswith("@"):
+        raw = "@" + raw
+    return raw
+
+
+def load_settings() -> Settings:
+    admin_raw = _required("ADMIN_ID")
+    if not admin_raw.isdigit():
+        _fail("ADMIN_ID faqat raqamlardan iborat bo'lishi kerak (masalan 123456789).")
+
+    db_path = Path(os.getenv("DATABASE_PATH", "data/shop.db"))
+    if not db_path.is_absolute():
+        db_path = BASE_DIR / db_path
+
+    ai_provider = os.getenv("AI_PROVIDER", "none").strip().lower() or "none"
+    if ai_provider not in ("none", "gemini", "claude"):
+        _fail("AI_PROVIDER faqat none, gemini yoki claude bo'lishi mumkin.")
+
+    return Settings(
+        bot_token=_required("BOT_TOKEN"),
+        channel_id=_parse_channel_id(_required("CHANNEL_ID")),
+        admin_id=int(admin_raw),
+        ai_provider=ai_provider,
+        gemini_api_key=_optional_key("GEMINI_API_KEY"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip() or "gemini-flash-latest",
+        anthropic_api_key=_optional_key("ANTHROPIC_API_KEY"),
+        claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip() or "claude-sonnet-5",
+        shop_name=os.getenv("SHOP_NAME", "Poyabzal Optom").strip(),
+        contact=os.getenv("CONTACT", "").strip(),
+        # BG_MODEL: auto (xotiraga qarab), birefnet-general, birefnet-general-lite, isnet-general-use
+        rembg_model=os.getenv("BG_MODEL", "auto").strip() or "auto",
+        photo_style=os.getenv("PHOTO_STYLE", "portrait").strip().lower() or "portrait",
+        database_path=db_path,
+        images_dir=db_path.parent / "images",
+    )
