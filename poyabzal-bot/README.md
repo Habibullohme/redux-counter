@@ -2,9 +2,9 @@
 
 Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
 
-1. Har bir rasmda mahsulotni **tiniqlashtiradi**, orqa fonni esa telefonlardagi «portret rejimi» kabi
-   **xiralashtiradi** (bepul, kompyuterning o'zida). Xohlasangiz, fonni butunlay olib tashlab,
-   oq **studiya foni** qo'yadigan qilish mumkin (`.env` da `PHOTO_STYLE=studio`).
+1. Har bir rasmni **iPhone «portret/fokus» rejimidagidek** qiladi: poyabzal va uni ushlagan qo'l tiniq,
+   orqadagi javonlar esa uzoqligiga qarab obyektiv kabi xiralashadi (bepul, kompyuterning o'zida, bir rasmga ~3 soniya).
+   Xohlasangiz, fonni butunlay olib tashlab, oq **studiya foni** qo'yadigan qilish mumkin (`.env` da `PHOTO_STYLE=studio`).
 2. Tavsif (sharh) yozadi — standart holatda **tayyor shablon** bo'yicha (bepul).
    Xohlasangiz AI (Google Gemini yoki Claude) yozadigan qilib qo'yish mumkin.
 3. Sizga **ko'rinishini** yuboradi, ostida ikkita tugma: **✅ Tasdiqlash** va **❌ Bekor qilish**.
@@ -44,11 +44,9 @@ Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
   ```
   Agar yo'q bo'lsa: <https://www.python.org/downloads/> dan yuklab o'rnating.
   **Windows da** o'rnatishda **"Add Python to PATH"** belgisini albatta qo'ying.
-- Internet (birinchi ishga tushishda rasm modeli yuklab olinadi: 180 MB – 1 GB).
-- Operativ xotira (RAM): kamida **4 GB**. Mahsulotni fondan ajratish sifati xotiraga bog'liq — bot o'zi tanlaydi:
-  - **12 GB** va ko'p — eng sifatli model: faqat poyabzal tiniq qoladi, qo'l va javon xiralashadi (bir rasmga ~30–60 soniya);
-  - **8 GB** va kam — oddiy model (~2 soniya): yonidagi poyabzallar ham ba'zan tiniq qolib ketadi.
-    8 GB da ham sifatlisini majburan yoqish mumkin (`.env` da `BG_MODEL=birefnet-general`), lekin kompyuter sekinlashadi.
+- Internet (birinchi ishga tushishda rasm modellari yuklab olinadi, ~300 MB).
+- Operativ xotira (RAM): kamida **4 GB** (portret uslubi ~1 GB ishlatadi).
+  Faqat `PHOTO_STYLE=studio` (fonni butunlay olib tashlash) uchun eng yaxshi natijaga **12 GB** kerak.
 
   Xotirani bilish: **Ctrl+Shift+Esc** → **Производительность / Performance** → **Память / Memory**.
 
@@ -305,15 +303,14 @@ deb hisoblanadi (4 ta rang, `10 pachka` → jami 40 pachka; buni tasdiqlashdan o
 Ranglar soni har xil bo'lsa (qora 10, jigarrang 5) — ularni alohida-alohida yuboring.
 Biror rang tugasa — `/tugadi <raqam>` faqat o'sha rangning postini o'chiradi.
 
-### 📸 Fon yaxshi tozalanishi uchun suratga olish maslahatlari
+### 📸 Suratga olish maslahatlari (portret uslubi uchun)
 
-Bepul fon tozalash rasmdagi **asosiy predmetni** ajratadi. Eng yaxshi natija uchun:
-- ✅ Eng sifatli model (12 GB+ xotira) qo'lni ham olib tashlaydi. Lekin oddiy model ishlasa,
-  poyabzalni **stol yoki polga qo'yib** suratga oling — qo'lni u olib tashlay olmaydi.
-- ✅ Qo'lda ushlasangiz, poyabzalning **tagida boshqa poyabzal tegib turmasin** — tegib tursa, ikkalasi bitta narsa deb qolishi mumkin.
-- ✅ Orqa fon **oddiy** bo'lsin: oq qog'oz, devor, bir xil rangli mato. Javondagi boshqa poyabzallar ko'rinmasin.
-- ✅ Yorug' joyda, soya kam bo'lsin; poyabzal kadrning markazida, butunligicha ko'rinsin.
-- ❌ Poyabzal va fon bir xil rangda bo'lmasin (qora poyabzal — qora fonda emas).
+Bot iPhone kabi har bir nuqtaning kameragacha masofasini aniqlaydi: **poyabzal bilan bir xil masofadagi
+narsalar tiniq**, uzoqdagilar xira bo'ladi. Shuning uchun:
+- ✅ Poyabzal **kadr markazida** bo'lsin — bot markazdagi narsaga fokus qiladi.
+- ✅ Poyabzalni orqa fondan (javondan) **uzoqroq**, kameraga yaqinroq ushlang — fon shuncha chiroyli xiralashadi.
+- ✅ Yorug' joyda suratga oling; poyabzal butunligicha kadrga sig'sin.
+- ❌ Poyabzal yonida, xuddi shu masofada boshqa poyabzal turmasin — u ham tiniq chiqadi.
 
 **Misollar:**
 ```
@@ -344,9 +341,9 @@ razmer 39-44, qora rang, pachkada 6 juft
 | "Kanalga joylab bo'lmadi" | Bot kanalda **admin**mi va "Xabar joylash" huquqi bormi? `CHANNEL_ID` `-100` bilan boshlanadimi? |
 | "shablon ishlatildi" degan ogohlantirish | Ogohlantirishda sababi yozilgan: kalit noto'g'ri (`GEMINI_API_KEY` ni tekshiring), bepul limit tugagan (biroz kuting) yoki model topilmadi (`GEMINI_MODEL` ni o'zgartiring). |
 | "AI kaliti yo'q" | `.env` da `GEMINI_API_KEY` bo'sh. Bu xato emas — shablon ishlaydi. Ogohlantirish kerak bo'lmasa: `AI_PROVIDER=none`. |
-| Fonda qo'l yoki boshqa narsa qolib ketdi | Suratga olish maslahatlariga qarang (10-bo'lim): poyabzalni qo'lda ushlamang, fon oddiy bo'lsin. |
-| Rasm juda sekin ishlanyapti | Eng sifatli model bir rasmga ~30–60 soniya sarflaydi — bu normal. Tezroq kerak bo'lsa `.env` da `BG_MODEL=isnet-general-use` (lekin sifati pastroq). |
-| "fonni olib bo'lmadi" | Rasm juda qorong'i yoki mahsulot fon bilan bir xil rangda. Yorug'roq, oddiy fonda suratga oling. |
+| Orqa fondagi narsa tiniq qolib ketdi | U poyabzal bilan bir xil masofada turgan bo'lishi mumkin. Poyabzalni orqa fondan uzoqroq (kameraga yaqinroq) ushlab suratga oling. |
+| `PHOTO_STYLE=studio` da qo'l qolib ketdi | Bu uslubga 12 GB xotira kerak; kam bo'lsa poyabzalni oq qog'oz ustiga qo'yib suratga oling yoki `PHOTO_STYLE=portrait` ga qayting. |
+| "mahsulotni ajratib bo'lmadi" | Rasm juda qorong'i yoki mahsulot fon bilan bir xil rangda. Yorug'roq joyda suratga oling. |
 | `/tugadi` xabarni o'chira olmadi | Botga "Xabarlarni o'chirish" huquqini bering. Telegram juda eski xabarlarni o'chirishga ruxsat bermasligi mumkin — ularni qo'lda o'chiring. |
 | `pip` topilmadi | Windows da Python ni qayta o'rnating va **"Add Python to PATH"** ni belgilang. |
 

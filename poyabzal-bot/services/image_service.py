@@ -1,11 +1,10 @@
-"""Rasm bilan ishlash. Ikki uslub bor (.env dagi PHOTO_STYLE):
+"""Rasm bilan ishlash. Uslublar (.env dagi PHOTO_STYLE):
 
-- blur (standart): rasm o'zgarmaydi, faqat mahsulot tiniqlashtiriladi, orqa fon esa
-  telefonlardagi «portret rejimi» kabi xiralashtiriladi. Fon olib tashlanmagani uchun
-  kichik xatolar ko'rinmaydi va rasm tabiiy chiqadi.
+- portrait (standart): iPhone «portret/fokus» rejimidagidek. Har bir nuqtaning kameragacha
+  masofasi (chuqurlik) aniqlanadi: mahsulot va uni ushlagan qo'l tiniq qoladi, orqadagi
+  javonlar esa uzoqligiga qarab obyektiv kabi (yumaloq «bokeh» bilan) xiralashadi.
+- blur: mahsulot niqobi bo'yicha oddiy xiralashtirish (eski uslub).
 - studio: fon butunlay olib tashlanib, och gradientli studiya foni qo'yiladi.
-
-Ikkala uslubda ham mahsulot qayerdaligini aniqlash uchun bir xil model ishlatiladi.
 
 Fon BiRefNet modeli bilan olib tashlanadi (bepul, MIT litsenziya, kompyuterning o'zida ishlaydi).
 U rasmdagi asosiy predmetni ajratadi; keyin orqada qolgan mayda bo'laklar va boshqa
@@ -50,17 +49,32 @@ BLUR_LONG_SIDE = 1600           # blur uslubida natijaning uzun tomoni (piksel)
 
 
 class ImageService:
-    def __init__(self, model_name: str = "auto", style: str = "blur", max_parallel: int = 1) -> None:
+    def __init__(self, model_name: str = "auto", style: str = "portrait", max_parallel: int = 1) -> None:
+        self.style = style if style in ("portrait", "blur", "studio") else "portrait"
+        # Portret uslubida asosiy ishni chuqurlik modeli qiladi — yengil niqob modeli yetarli
+        if self.style == "portrait" and model_name in ("", "auto"):
+            model_name = FALLBACK_MODEL
         self.model_name = pick_model(model_name)
-        self.style = style if style in ("blur", "studio") else "blur"
+        self._depth = None
         self._session = None
         self._session_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(max_parallel)
         self._background = self._make_background(CANVAS_SIZE)
 
     async def warmup(self) -> None:
-        """Modelni oldindan yuklaydi (birinchi marta internetdan yuklab olinadi: 180 MB – 1 GB)."""
+        """Modellarni oldindan yuklaydi (birinchi marta internetdan yuklab olinadi)."""
         await self._get_session()
+        if self.style == "portrait":
+            await self._get_depth()
+
+    async def _get_depth(self):
+        async with self._session_lock:
+            if self._depth is None:
+                from services.depth import DepthEstimator
+
+                log.info("Chuqurlik modeli yuklanmoqda (birinchi safar ~100 MB)")
+                self._depth = await asyncio.to_thread(DepthEstimator)
+            return self._depth
 
     async def _get_session(self):
         async with self._session_lock:
@@ -83,7 +97,8 @@ class ImageService:
         async with self._semaphore:
             try:
                 session = await self._get_session()
-                jpeg = await asyncio.to_thread(self._process_sync, data, session)
+                depth = await self._get_depth() if self.style == "portrait" else None
+                jpeg = await asyncio.to_thread(self._process_sync, data, session, depth)
                 return ProcessedPhoto(original_file_id, jpeg, background_removed=True)
             except Exception as exc:  # noqa: BLE001 — bot to'xtamasligi kerak
                 log.exception("Fonni olib tashlashda xato")
@@ -96,7 +111,7 @@ class ImageService:
 
     # ---------- sinxron (thread ichida) ----------
 
-    def _process_sync(self, data: bytes, session) -> bytes:
+    def _process_sync(self, data: bytes, session, depth=None) -> bytes:
         from rembg import remove
 
         source = self._open(data)
@@ -105,6 +120,8 @@ class ImageService:
             cutout = Image.open(io.BytesIO(cutout))
         cutout = cutout.convert("RGBA")
         alpha = clean_alpha(np.array(cutout.getchannel("A")))
+        if self.style == "portrait" and depth is not None:
+            return portrait_blur(source, depth.predict(source), alpha)
         if self.style == "blur":
             return blur_background(source, alpha)
         cutout.putalpha(Image.fromarray(alpha))
@@ -119,7 +136,7 @@ class ImageService:
         """Mahsulotni aniqlab bo'lmasa: blur uslubida butun rasm tiniqlashtiriladi,
         studio uslubida asl rasm studiya foni markaziga qo'yiladi."""
         img = self._open(data)
-        if self.style == "blur":
+        if self.style in ("portrait", "blur"):
             return _to_jpeg(_limit_size(_enhance(img.convert("RGB"))))
         return self._compose(img.convert("RGBA"), with_shadow=False)
 
@@ -298,6 +315,80 @@ def blur_background(source: Image.Image, alpha: np.ndarray) -> bytes:
     fg = np.asarray(_enhance(img), dtype=np.float32)
     out = np.clip(fg * m + bg * (1.0 - m), 0, 255).astype(np.uint8)
     return _to_jpeg(_limit_size(Image.fromarray(out)))
+
+
+def _guided_filter(guide: np.ndarray, src: np.ndarray, radius: int, eps: float) -> np.ndarray:
+    """Niqob chegaralarini rasmdagi haqiqiy chegaralarga moslaydi (soch/ip kabi mayda joylar ham)."""
+    from scipy import ndimage
+
+    def mean(x: np.ndarray) -> np.ndarray:
+        return ndimage.uniform_filter(x, size=2 * radius + 1, mode="reflect")
+
+    mean_i, mean_p = mean(guide), mean(src)
+    a = (mean(guide * src) - mean_i * mean_p) / (mean(guide * guide) - mean_i * mean_i + eps)
+    b = mean_p - a * mean_i
+    return mean(a) * guide + mean(b)
+
+
+def _disc_kernel(radius: int) -> np.ndarray:
+    y, x = np.mgrid[-radius:radius + 1, -radius:radius + 1]
+    kernel = ((x * x + y * y) <= radius * radius).astype(np.float32)
+    return kernel / kernel.sum()
+
+
+def _lens_blur(linear: np.ndarray, weight: np.ndarray, radius: int) -> tuple[np.ndarray, np.ndarray]:
+    """Obyektiv xiraligi (doira shaklidagi «bokeh»). Faqat `weight` > 0 joylar hisobga olinadi."""
+    from scipy.signal import fftconvolve
+
+    kernel = _disc_kernel(radius)
+    num = np.stack([fftconvolve(linear[..., c] * weight, kernel, mode="same") for c in range(3)], axis=-1)
+    den = fftconvolve(weight, kernel, mode="same")[..., None]
+    return num, den
+
+
+def portrait_blur(source: Image.Image, depth: np.ndarray, alpha: np.ndarray) -> bytes:
+    """iPhone portret rejimi: fokusdagi narsalar tiniq, orqasi uzoqligiga qarab xira."""
+    img = _limit_size(source.convert("RGB"))
+    w, h = img.size
+    if depth.shape != (h, w):
+        depth = np.asarray(Image.fromarray(depth.astype(np.float32)).resize((w, h), Image.BILINEAR), dtype=np.float32)
+    if alpha.shape != (h, w):
+        alpha = np.asarray(Image.fromarray(alpha).resize((w, h), Image.BILINEAR))
+    rgb = np.asarray(img, dtype=np.float32) / 255.0
+    seg = alpha.astype(np.float32) / 255.0
+
+    # Fokus chuqurligi: markazdagi mahsulot (niqob bo'lsa — markazdagi niqob qismi)
+    y0, y1, x0, x1 = int(h * 0.25), int(h * 0.7), int(w * 0.25), int(w * 0.75)
+    center = depth[y0:y1, x0:x1]
+    center_seg = seg[y0:y1, x0:x1] > 0.5
+    focus_depth = float(np.percentile(center[center_seg] if center_seg.sum() > 500 else center, 75))
+
+    diff = depth - focus_depth  # musbat — kameraga yaqinroq (qo'l), manfiy — uzoqroq (javon)
+    near_ok, far_tol, soft = 0.30, 0.07, 0.10
+    focus = np.where(
+        diff >= 0,
+        np.clip(1 - (diff - near_ok) / soft, 0, 1),
+        np.clip(1 - (-diff - far_tol) / soft, 0, 1),
+    )
+    # Mahsulotning o'zi (orqa qismi ham) tiniq bo'lsin — lekin faqat fokusga yaqin qismlari
+    focus = np.maximum(focus, seg * np.clip((diff + 0.22) / 0.08, 0, 1))
+    focus = _guided_filter(rgb.mean(axis=-1), focus.astype(np.float32), max(4, w // 120), 1e-3)
+    focus = np.clip((focus - 0.15) / 0.7, 0, 1)
+
+    farness = np.clip((-diff - far_tol) / 0.35, 0, 1)[..., None]
+    linear = rgb ** 2.2  # yorug' nuqtalar haqiqiy obyektivdagidek yorqin «bokeh» beradi
+    radius = max(10, int(max(w, h) * 0.02))
+    bg_weight = (1 - focus).astype(np.float32)
+    num_mid, den_mid = _lens_blur(linear, bg_weight, radius // 2)
+    num_far, den_far = _lens_blur(linear, bg_weight, radius)
+    background = (num_mid / np.maximum(den_mid, 1e-3)) * (1 - farness) + (num_far / np.maximum(den_far, 1e-3)) * farness
+    background = np.where(den_far > 0.02, background, linear)
+
+    f = focus[..., None]
+    sharp = np.asarray(_enhance(img), dtype=np.float32) / 255.0
+    out = (sharp ** 2.2) * f + background * (1 - f)
+    out = np.clip(out, 0, 1) ** (1 / 2.2)
+    return _to_jpeg(Image.fromarray((out * 255).astype(np.uint8)))
 
 
 def save_images(images_dir: Path, product_id: int, photos: list[bytes]) -> list[str]:

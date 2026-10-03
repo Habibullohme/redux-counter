@@ -28,7 +28,7 @@ class Settings:
     shop_name: str
     contact: str
     rembg_model: str
-    photo_style: str          # "blur" (fon xira) yoki "studio" (fon olib tashlanadi)
+    photo_style: str          # "portrait" (iPhone fokus rejimi), "blur" yoki "studio"
     database_path: Path
     images_dir: Path
 
@@ -89,7 +89,7 @@ def load_settings() -> Settings:
         contact=os.getenv("CONTACT", "").strip(),
         # BG_MODEL: auto (xotiraga qarab), birefnet-general, birefnet-general-lite, isnet-general-use
         rembg_model=os.getenv("BG_MODEL", "auto").strip() or "auto",
-        photo_style=os.getenv("PHOTO_STYLE", "blur").strip().lower() or "blur",
+        photo_style=os.getenv("PHOTO_STYLE", "portrait").strip().lower() or "portrait",
         database_path=db_path,
         images_dir=db_path.parent / "images",
     )
