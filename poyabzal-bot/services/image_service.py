@@ -346,6 +346,25 @@ def _lens_blur(linear: np.ndarray, weight: np.ndarray, radius: int) -> tuple[np.
     return num, den
 
 
+def _product_matte(gray: np.ndarray, seg: np.ndarray) -> np.ndarray:
+    """Mahsulot niqobini aniq chegarali qiladi (ichi to'liq 1, chekkasi 1-2 piksel yumshoq)."""
+    from scipy import ndimage
+
+    solid = seg > 0.5
+    labels, count = ndimage.label(solid)
+    if count == 0:
+        return np.zeros_like(gray)
+    sizes = ndimage.sum(solid, labels, index=np.arange(1, count + 1))
+    solid = labels == (int(np.argmax(sizes)) + 1)
+    solid = ndimage.binary_fill_holes(solid)
+    # Chegarani rasmdagi haqiqiy chetga moslash (kichik radius — faqat chekka atrofida)
+    matte = _guided_filter(gray, solid.astype(np.float32), 2, 1e-4)
+    matte = np.clip((matte - 0.25) / 0.5, 0, 1)
+    # Ichki qism albatta to'liq tiniq
+    inner = ndimage.binary_erosion(solid, iterations=2)
+    return np.maximum(matte, inner.astype(np.float32))
+
+
 def portrait_blur(source: Image.Image, depth: np.ndarray, alpha: np.ndarray) -> bytes:
     """iPhone portret rejimi: fokusdagi narsalar tiniq, orqasi uzoqligiga qarab xira."""
     img = _limit_size(source.convert("RGB"))
@@ -370,15 +389,23 @@ def portrait_blur(source: Image.Image, depth: np.ndarray, alpha: np.ndarray) -> 
         np.clip(1 - (diff - near_ok) / soft, 0, 1),
         np.clip(1 - (-diff - far_tol) / soft, 0, 1),
     )
-    # Mahsulotning o'zi (orqa qismi ham) tiniq bo'lsin — lekin faqat fokusga yaqin qismlari
-    focus = np.maximum(focus, seg * np.clip((diff + 0.22) / 0.08, 0, 1))
-    focus = _guided_filter(rgb.mean(axis=-1), focus.astype(np.float32), max(4, w // 120), 1e-3)
+    gray = rgb.mean(axis=-1)
+    focus = _guided_filter(gray, focus.astype(np.float32), max(4, w // 120), 1e-3)
     focus = np.clip((focus - 0.15) / 0.7, 0, 1)
+
+    # Poyabzalning o'zi: aniq, qattiq chegarali niqob. Uning ichida xiralik umuman bo'lmaydi,
+    # chegarasi esa 1-2 piksel ichida rasmdagi haqiqiy chetga moslashtiriladi.
+    shoe = _product_matte(gray, seg * (diff > -0.22))
+    focus = np.maximum(focus, shoe)
 
     farness = np.clip((-diff - far_tol) / 0.35, 0, 1)[..., None]
     linear = rgb ** 2.2  # yorug' nuqtalar haqiqiy obyektivdagidek yorqin «bokeh» beradi
     radius = max(10, int(max(w, h) * 0.02))
-    bg_weight = (1 - focus).astype(np.float32)
+    # Fonni xiralashtirishda poyabzal piksellari umuman qatnashmaydi — atrofida «soya/halo» bo'lmaydi
+    from scipy import ndimage
+
+    shoe_zone = ndimage.binary_dilation(shoe > 0.05, iterations=max(3, w // 300))
+    bg_weight = ((1 - focus) * (~shoe_zone)).astype(np.float32)
     num_mid, den_mid = _lens_blur(linear, bg_weight, radius // 2)
     num_far, den_far = _lens_blur(linear, bg_weight, radius)
     background = (num_mid / np.maximum(den_mid, 1e-3)) * (1 - farness) + (num_far / np.maximum(den_far, 1e-3)) * farness
