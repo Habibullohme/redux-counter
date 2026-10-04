@@ -38,14 +38,15 @@ EXAMPLE = "<code>Brend: X, Chorsu, 10 pachka, kelish 150000, sotish 180000</code
 IMAGE_FILTER = F.photo | (F.document & F.document.mime_type.startswith("image/"))
 
 
-def _extract_file_ids(album: list[Message]) -> list[tuple[str, int | None]]:
-    files: list[tuple[str, int | None]] = []
+def _extract_file_ids(album: list[Message]) -> list[tuple[str, int | None, bool]]:
+    """(file_id, hajmi, oddiy rasmmi) ro'yxati. Fayl qilib yuborilgan rasmlar uchun oxirgisi False."""
+    files: list[tuple[str, int | None, bool]] = []
     for m in album:
         if m.photo:
             biggest = m.photo[-1]
-            files.append((biggest.file_id, biggest.file_size))
+            files.append((biggest.file_id, biggest.file_size, True))
         elif m.document and (m.document.mime_type or "").startswith("image/"):
-            files.append((m.document.file_id, m.document.file_size))
+            files.append((m.document.file_id, m.document.file_size, False))
     return files
 
 
@@ -135,7 +136,7 @@ async def on_photos(
         return
 
     status = await message.answer(
-        f"⏳ {len(files)} ta rasm qayta ishlanmoqda (har biriga ~20–60 soniya)..."
+        f"⏳ {len(files)} ta rasm tayyorlanmoqda..."
     )
     batch_id = secrets.token_hex(4)
     product_ids: list[int] = []
@@ -146,10 +147,13 @@ async def on_photos(
 
         processed: list[ProcessedPhoto] = []
         unreadable = 0
-        for i, (file_id, _size) in enumerate(files, start=1):
+        for i, (file_id, _size, is_photo) in enumerate(files, start=1):
             try:
                 buffer = await bot.download(file_id)
-                processed.append(await images.process(file_id, buffer.read()))
+                photo = await images.process(file_id, buffer.read())
+                if images.style == "original" and is_photo:
+                    photo.extra["telegram_file_id"] = file_id  # qayta yuklamasdan, sifat yo'qolmaydi
+                processed.append(photo)
             except Exception:  # noqa: BLE001 — bitta buzuq rasm hammasini to'xtatmasin
                 log.exception("Rasmni yuklab/ochib bo'lmadi: %s", file_id)
                 unreadable += 1
@@ -184,7 +188,8 @@ async def on_photos(
             )
             preview = await bot.send_photo(
                 chat_id=message.chat.id,
-                photo=BufferedInputFile(photo.jpeg_bytes, filename=f"{product_id}.jpg"),
+                photo=photo.extra.get("telegram_file_id")
+                or BufferedInputFile(photo.jpeg_bytes, filename=f"{product_id}.jpg"),
                 caption=caption,
                 parse_mode="HTML",
             )

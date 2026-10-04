@@ -81,7 +81,8 @@ async def main() -> None:
             BotCommand(command="tugadi", description="Yuk tugadi — kanaldan o'chirish"),
             BotCommand(command="yordam", description="Yordam"),
         ])
-        log.info("Rasm modeli tayyorlanmoqda (birinchi safar bir necha daqiqa olishi mumkin)...")
+        if images.style != "original":
+            log.info("Rasm modeli tayyorlanmoqda (birinchi safar bir necha daqiqa olishi mumkin)...")
         try:
             await images.warmup()
         except Exception:  # noqa: BLE001 — model keyin, birinchi rasmda qayta yuklanadi

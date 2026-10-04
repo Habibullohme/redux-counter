@@ -2,9 +2,9 @@
 
 Ulgurji (optom) poyabzal do'koni uchun bot. Siz rasm va ma'lumot yuborasiz, bot:
 
-1. Har bir rasmni **iPhone «portret/fokus» rejimidagidek** qiladi: poyabzal va uni ushlagan qo'l tiniq,
-   orqadagi javonlar esa uzoqligiga qarab obyektiv kabi xiralashadi (bepul, kompyuterning o'zida, bir rasmga ~3 soniya).
-   Xohlasangiz, fonni butunlay olib tashlab, oq **studiya foni** qo'yadigan qilish mumkin (`.env` da `PHOTO_STYLE=studio`).
+1. Rasmlaringizga **tegmaydi** — siz yuborgan rasm o'zi kanalga chiqadi.
+   (Xohlasangiz, `.env` da `PHOTO_STYLE=portrait` — iPhone «portret» rejimidagidek fonni xiralashtirish,
+   yoki `PHOTO_STYLE=studio` — fonni olib tashlab, oq studiya foni qo'yish yoqiladi.)
 2. Tavsif (sharh) yozadi — standart holatda **tayyor shablon** bo'yicha (bepul).
    Xohlasangiz AI (Google Gemini yoki Claude) yozadigan qilib qo'yish mumkin.
 3. Sizga **ko'rinishini** yuboradi, ostida ikkita tugma: **✅ Tasdiqlash** va **❌ Bekor qilish**.

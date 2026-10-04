@@ -1,6 +1,8 @@
 """Rasm bilan ishlash. Uslublar (.env dagi PHOTO_STYLE):
 
-- portrait (standart): iPhone «portret/fokus» rejimidagidek. Har bir nuqtaning kameragacha
+- original (standart): rasmga umuman tegilmaydi — siz yuborgan rasm o'zi kanalga chiqadi.
+
+- portrait: iPhone «portret/fokus» rejimidagidek. Har bir nuqtaning kameragacha
   masofasi (chuqurlik) aniqlanadi: mahsulot va uni ushlagan qo'l tiniq qoladi, orqadagi
   javonlar esa uzoqligiga qarab obyektiv kabi (yumaloq «bokeh» bilan) xiralashadi.
 - blur: mahsulot niqobi bo'yicha oddiy xiralashtirish (eski uslub).
@@ -50,7 +52,7 @@ BLUR_LONG_SIDE = 1600           # blur uslubida natijaning uzun tomoni (piksel)
 
 class ImageService:
     def __init__(self, model_name: str = "auto", style: str = "portrait", max_parallel: int = 1) -> None:
-        self.style = style if style in ("portrait", "blur", "studio") else "portrait"
+        self.style = style if style in ("original", "portrait", "blur", "studio") else "original"
         # Portret uslubida asosiy ishni chuqurlik modeli qiladi — yengil niqob modeli yetarli
         if self.style == "portrait" and model_name in ("", "auto"):
             model_name = FALLBACK_MODEL
@@ -63,6 +65,8 @@ class ImageService:
 
     async def warmup(self) -> None:
         """Modellarni oldindan yuklaydi (birinchi marta internetdan yuklab olinadi)."""
+        if self.style == "original":
+            return  # rasmga ishlov berilmaydi — model kerak emas
         await self._get_session()
         if self.style == "portrait":
             await self._get_depth()
@@ -94,6 +98,8 @@ class ImageService:
 
     async def process(self, original_file_id: str, data: bytes) -> ProcessedPhoto:
         """Bitta rasmni qayta ishlaydi. Xato bo'lsa asl rasmni studiya foniga qo'yadi."""
+        if self.style == "original":
+            return ProcessedPhoto(original_file_id, data, background_removed=True)
         async with self._semaphore:
             try:
                 session = await self._get_session()
@@ -424,7 +430,8 @@ def save_images(images_dir: Path, product_id: int, photos: list[bytes]) -> list[
     folder.mkdir(parents=True, exist_ok=True)
     paths = []
     for i, data in enumerate(photos):
-        path = folder / f"{i + 1}.jpg"
+        ext = {b"\x89PNG": "png", b"RIFF": "webp"}.get(data[:4], "jpg")
+        path = folder / f"{i + 1}.{ext}"
         path.write_bytes(data)
         paths.append(str(path))
     return paths
