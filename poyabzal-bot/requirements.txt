@@ -1,0 +1,7 @@
+aiogram>=3.20,<4
+google-genai>=1.0
+anthropic>=1.0
+python-dotenv>=1.0
+pillow>=10.0
+numpy>=1.26
+rembg[cpu]>=2.0.60

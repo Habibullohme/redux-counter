@@ -1,3 +1,5 @@
+> 👞 **Telegram bot (poyabzal optom):** [`poyabzal-bot/`](poyabzal-bot/README.md) papkasida — o'rnatish va ishga tushirish yo'riqnomasi o'sha yerda.
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
